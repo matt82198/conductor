@@ -1,0 +1,51 @@
+=== Spike 2: Virtual Threads + Process I/O on Windows ===
+Java version: 25.0.2
+OS: Windows 11 10.0
+Available processors: 32
+
+--- Test 1: Basic (10 virtual threads, each reading a process) ---
+  Completed: 10/10
+  Errors: 0
+  Wall-clock time: 4312ms
+  Note: ping -n 5 takes ~4s sequentially; if wall-clock < 10*4s = 40s, concurrency works
+  RESULT: PASS
+
+--- Test 2: Scale (50 virtual threads, each reading a process) ---
+  Memory before: 1.5 MB
+  Completed: 50/50
+  Errors: 0
+  Wall-clock time: 2389ms (2s)
+  Memory after: 9.9 MB
+  Peak memory (sampled): 9.9 MB
+  Memory delta: 8.5 MB
+  Note: 50 x ping -n 3 sequentially = ~100s. Concurrent should be ~2-4s.
+  RESULT: PASS
+
+--- Test 3: Pinning Detection ---
+  (Run with: -Djdk.tracePinnedThreads=short to see pinning warnings on stderr)
+  If no 'Thread.pinned' messages appear on stderr, no pinning occurred.
+  Completed: 10/10
+  Check stderr for any 'pinned' thread warnings.
+  NOTE: synchronized blocks WILL cause pinning. This is expected.
+  The key question is whether Process.getInputStream().read() itself pins.
+  Running 10 more WITHOUT synchronized block...
+  Without synchronized: completed 10/10
+  RESULT: PASS
+
+--- Test 4: Churn (spawn/kill 20 processes x 5 iterations) ---
+  Memory before churn: 1.7 MB
+  Iteration 1: spawned=20, alive after kill=0
+  Iteration 2: spawned=20, alive after kill=0
+  Iteration 3: spawned=20, alive after kill=0
+  Iteration 4: spawned=20, alive after kill=0
+  Iteration 5: spawned=20, alive after kill=0
+  Total spawned: 100
+  Total confirmed killed: 100
+  Errors: 0
+  Memory before: 1.7 MB
+  Memory after: 1.8 MB
+  Memory delta: 74.4 KB
+  Leak indicator: delta > 50MB would be concerning
+  RESULT: PASS
+
+=== OVERALL RESULT: ALL TESTS PASSED ===

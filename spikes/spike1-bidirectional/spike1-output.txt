@@ -1,0 +1,41 @@
+=== Spike 1: Claude CLI Bidirectional Streaming ===
+Java version: 25.0.2
+OS: Windows 11 10.0
+
+--- Test 1: Single agent, stream-json output ---
+  WARNING: non-JSON line: Warning: no stdin data received in 3s, proceeding without it. If piping from a s
+  Event types: [system, assistant, rate_limit_event, result]
+  Has system/init: true
+  Has assistant: true
+  Has result: true
+  Result text: success
+  Cost: $0.0393
+  Exit code: 0
+  Duration: 7433ms
+  RESULT: PASS
+
+--- Test 2: Interactive mode, send message via stdin ---
+  Event types: [system, assistant, rate_limit_event, result]
+  Got assistant response: true
+  Got result: true
+  Exit code: 0
+  RESULT: PASS
+
+--- Test 3: Kill and resume session ---
+TEST 3 EXCEPTION: Stream closed
+
+--- Test 4: 5 concurrent agents ---
+  Completed: 5/5
+  Failures: 0
+  Wall-clock: 8080ms
+  RESULT: PASS
+
+--- Test 5: 10 agents, memory measurement ---
+  Memory before: 1.7 MB
+  Completed: 10/10
+  Wall-clock: 12373ms
+  Memory after: 8.9 MB
+  Memory delta: 7.2 MB
+  RESULT: PASS
+
+=== OVERALL: SOME TESTS FAILED ===

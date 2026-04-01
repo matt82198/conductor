@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    @apply h-full w-full m-0 p-0;
+    @apply bg-surface-0 text-gray-200;
+    @apply font-mono antialiased;
+    overflow: hidden;
+  }
+
+  /* Scrollbar styling for dark theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #444;
+  }
+
+  /* Selection styling */
+  ::selection {
+    background: rgba(59, 130, 246, 0.3);
+  }
+}
+
+@layer components {
+  /* Pulse animation for thinking state dot */
+  .animate-pulse {
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+}

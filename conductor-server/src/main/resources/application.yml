@@ -1,0 +1,13 @@
+server:
+  port: 8090
+
+spring:
+  threads:
+    virtual:
+      enabled: true
+  application:
+    name: conductor-server
+
+conductor:
+  agents:
+    max-concurrent: 200
