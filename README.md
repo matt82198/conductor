@@ -1,6 +1,6 @@
 # Conductor
 
-Meta-orchestration platform for managing fleets of Claude Code agents across multiple projects.
+Agentic Coding IDE. Meta-orchestration platform for managing fleets of Claude Code agents across multiple projects.
 
 **Transform "watch 50 terminal tabs" into "glance at one dashboard, respond to what matters."**
 
