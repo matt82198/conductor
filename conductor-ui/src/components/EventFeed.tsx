@@ -18,34 +18,16 @@ function eventTypeColor(type: string): string {
     case 'error': return 'text-red-400';
     case 'completed': return 'text-green-400';
     case 'brain': return 'text-purple-400';
-    case 'spawned': return 'text-purple-400';
     default: return 'text-gray-400';
   }
 }
 
-function EventRow({ event, isLast }: { event: FeedEvent; isLast: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const isLow = event.urgency === 'LOW' || event.urgency === 'NOISE';
-  const isLong = event.content.length > 200;
-  const shouldTruncate = !isLast && isLong && !expanded;
-  const displayContent = shouldTruncate ? event.content.slice(0, 200) + '...' : event.content;
-
+function EventRow({ event }: { event: FeedEvent }) {
   return (
-    <div
-      className={`flex gap-2 px-3 py-0.5 hover:bg-surface-2 font-mono text-xs leading-relaxed ${isLow ? 'opacity-50' : ''} ${isLong && !isLast ? 'cursor-pointer' : ''}`}
-      onClick={isLong && !isLast ? () => setExpanded(!expanded) : undefined}
-    >
-      <span className="text-gray-600 shrink-0">[{formatTime(event.timestamp)}]</span>
-      <span className="text-accent-blue shrink-0 truncate max-w-32">{event.agentName}:</span>
-      {event.urgency && (event.urgency === 'CRITICAL' || event.urgency === 'HIGH') && (
-        <span className={`text-[10px] font-bold tracking-wider px-1 py-0.5 rounded shrink-0 ${
-          event.urgency === 'CRITICAL' ? 'bg-red-500/20 text-accent-red' : 'bg-yellow-500/20 text-amber-400'
-        }`}>{event.urgency === 'CRITICAL' ? 'CRIT' : 'HIGH'}</span>
-      )}
-      <span className={`${eventTypeColor(event.type)} min-w-0 whitespace-pre-wrap`}>
-        {displayContent}
-        {shouldTruncate && <span className="text-gray-600 ml-1">(click)</span>}
-      </span>
+    <div className="px-3 py-0.5 hover:bg-surface-2 font-mono text-xs leading-relaxed">
+      <span className="text-gray-600">[{formatTime(event.timestamp)}] </span>
+      <span className={event.agentName === 'you' ? 'text-accent-green font-bold' : 'text-accent-blue'}>{event.agentName}: </span>
+      <span className={`${eventTypeColor(event.type)} whitespace-pre-wrap`}>{event.content}</span>
     </div>
   );
 }
@@ -55,14 +37,13 @@ export function EventFeed() {
   const clearEvents = useConductorStore((s) => s.clearEvents);
   const humanInputRequests = useConductorStore((s) => s.humanInputRequests);
   const removeHumanInput = useConductorStore((s) => s.removeHumanInput);
-  const agents = useConductorStore((s) => s.agents);
   const addEvent = useConductorStore((s) => s.addEvent);
+  const agents = useConductorStore((s) => s.agents);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
 
   const handleScroll = useCallback(() => {
     const el = containerRef.current;
@@ -76,71 +57,62 @@ export function EventFeed() {
     }
   }, [events, humanInputRequests, autoScroll]);
 
-  // Auto-focus when an agent needs input
   useEffect(() => {
     if (humanInputRequests.length > 0) inputRef.current?.focus();
   }, [humanInputRequests.length]);
 
-  const activeRequest = humanInputRequests[0] ?? null;
-
-  // Find most recent active agent (for direct messaging when no request pending)
   const lastAgentId = events.length > 0 ? events[events.length - 1].agentId : null;
 
   const handleSend = useCallback(async () => {
-    if (!input.trim() || sending) return;
+    if (!input.trim()) return;
     const text = input.trim();
-    const targetName = activeRequest?.agentName ?? agents.get(lastAgentId ?? '')?.name ?? 'agent';
+    setInput(''); // Always clear immediately
 
-    // Show the user's message in the feed immediately
+    // Show in feed
     addEvent({
       id: `user-${Date.now()}`,
-      agentId: activeRequest?.agentId ?? lastAgentId ?? '',
+      agentId: humanInputRequests[0]?.agentId ?? lastAgentId ?? '',
       agentName: 'you',
       type: 'text',
       content: text,
       timestamp: new Date(),
     });
 
-    setSending(true);
-
-    try {
-      if (activeRequest) {
-        // Respond to human input request
-        const res = await fetch(`${API_BASE}/api/humaninput/${activeRequest.requestId}/respond`, {
+    // Try to respond to the first pending request
+    if (humanInputRequests.length > 0) {
+      const req = humanInputRequests[0];
+      try {
+        await fetch(`${API_BASE}/api/humaninput/${req.requestId}/respond`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: input.trim() }),
+          body: JSON.stringify({ text }),
         });
-        if (res.ok) removeHumanInput(activeRequest.requestId);
-      } else if (lastAgentId) {
-        // Direct message to last active agent
+        removeHumanInput(req.requestId);
+      } catch { /* already shown in feed */ }
+    } else if (lastAgentId) {
+      try {
         await fetch(`${API_BASE}/api/agents/${lastAgentId}/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: input.trim() }),
+          body: JSON.stringify({ text }),
         });
-      }
-      setInput('');
-    } catch { /* ignore */ }
-    setSending(false);
-  }, [input, sending, activeRequest, lastAgentId, removeHumanInput]);
+      } catch { /* already shown in feed */ }
+    }
+  }, [input, humanInputRequests, lastAgentId, removeHumanInput, addEvent]);
 
   return (
     <div className="flex flex-col h-full bg-surface-0">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-3 bg-surface-1 shrink-0">
         <h2 className="text-xs font-bold text-gray-400 tracking-wider">
-          EVENTS
-          <span className="ml-2 text-gray-600 font-normal">{events.length}</span>
-          {activeRequest && <span className="ml-2 text-accent-red animate-pulse">input needed</span>}
-        </h2>
-        <div className="flex items-center gap-2">
-          {!autoScroll && (
-            <button onClick={() => { setAutoScroll(true); if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight; }}
-              className="text-[10px] text-accent-blue hover:text-blue-300">Resume</button>
+          EVENTS <span className="text-gray-600 font-normal">{events.length}</span>
+          {humanInputRequests.length > 0 && (
+            <span className="ml-2 text-accent-red animate-pulse">
+              {humanInputRequests.length} awaiting input
+            </span>
           )}
-          <button onClick={clearEvents} className="text-[10px] text-gray-600 hover:text-gray-400">Clear</button>
-        </div>
+        </h2>
+        <button onClick={clearEvents} className="text-[10px] text-gray-600 hover:text-gray-400">Clear</button>
       </div>
 
       {/* Event stream */}
@@ -151,33 +123,33 @@ export function EventFeed() {
           </div>
         ) : (
           <div className="py-1">
-            {events.map((event, i) => (
-              <EventRow key={event.id} event={event} isLast={i === events.length - 1} />
+            {events.map((event) => (
+              <EventRow key={event.id} event={event} />
             ))}
           </div>
         )}
 
-        {/* Inline question prompt */}
-        {activeRequest && (
-          <div className="px-3 py-2 border-t border-accent-red/30 bg-red-500/5">
+        {/* Show ALL pending questions, not just the first */}
+        {humanInputRequests.map((req, i) => (
+          <div key={req.requestId} className={`px-3 py-2 border-t ${i === 0 ? 'border-accent-red/30 bg-red-500/5' : 'border-surface-3 bg-surface-1'}`}>
             <div className="font-mono text-xs">
-              <span className="text-accent-red font-bold">{activeRequest.agentName}</span>
-              <span className="text-gray-400"> asks: </span>
-              <span className="text-gray-200 whitespace-pre-wrap">{activeRequest.question}</span>
+              <span className={i === 0 ? 'text-accent-red font-bold' : 'text-accent-yellow font-bold'}>{req.agentName}</span>
+              <span className="text-gray-400"> {i === 0 ? 'asks' : 'also waiting'}: </span>
+              <span className="text-gray-200 whitespace-pre-wrap">{req.question}</span>
             </div>
-            {activeRequest.suggestedOptions.length > 0 && (
+            {req.suggestedOptions.length > 0 && (
               <div className="font-mono text-xs text-gray-500 mt-1">
-                options: {activeRequest.suggestedOptions.join(' | ')}
+                options: {req.suggestedOptions.join(' | ')}
               </div>
             )}
           </div>
-        )}
+        ))}
       </div>
 
-      {/* Input bar — always visible */}
+      {/* Input — always visible, always enabled, always clears */}
       <div className="flex items-center gap-2 px-3 py-2 border-t border-surface-3 bg-surface-1 shrink-0 font-mono text-xs">
-        <span className={activeRequest ? 'text-accent-green' : 'text-gray-600'}>
-          {activeRequest ? '>' : '$'}
+        <span className={humanInputRequests.length > 0 ? 'text-accent-green' : 'text-gray-600'}>
+          {humanInputRequests.length > 0 ? '>' : '$'}
         </span>
         <input
           ref={inputRef}
@@ -185,11 +157,9 @@ export function EventFeed() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend(); }}
-          placeholder={activeRequest ? `Respond to ${activeRequest.agentName}...` : lastAgentId ? 'Message agent...' : 'No agents running'}
-          disabled={sending || (!activeRequest && !lastAgentId)}
-          className="flex-1 bg-transparent text-gray-200 focus:outline-none placeholder-gray-700 disabled:opacity-40"
+          placeholder={humanInputRequests.length > 0 ? `Respond to ${humanInputRequests[0].agentName}...` : 'Message agent...'}
+          className="flex-1 bg-transparent text-gray-200 focus:outline-none placeholder-gray-700"
         />
-        {sending && <span className="text-purple-400 animate-pulse">sending...</span>}
       </div>
     </div>
   );

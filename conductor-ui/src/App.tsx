@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { LoadingScreen } from './components/LoadingScreen';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { MainDashboard } from './components/MainDashboard';
+import { InputModal } from './components/InputModal';
 
 /**
  * Root application layout.
@@ -27,5 +28,10 @@ export default function App() {
     return <WelcomeScreen onEnter={handleEnter} />;
   }
 
-  return <MainDashboard />;
+  return (
+    <>
+      <InputModal />
+      <MainDashboard />
+    </>
+  );
 }
