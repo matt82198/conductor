@@ -56,6 +56,7 @@ export function EventFeed() {
   const humanInputRequests = useConductorStore((s) => s.humanInputRequests);
   const removeHumanInput = useConductorStore((s) => s.removeHumanInput);
   const agents = useConductorStore((s) => s.agents);
+  const addEvent = useConductorStore((s) => s.addEvent);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -87,6 +88,19 @@ export function EventFeed() {
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || sending) return;
+    const text = input.trim();
+    const targetName = activeRequest?.agentName ?? agents.get(lastAgentId ?? '')?.name ?? 'agent';
+
+    // Show the user's message in the feed immediately
+    addEvent({
+      id: `user-${Date.now()}`,
+      agentId: activeRequest?.agentId ?? lastAgentId ?? '',
+      agentName: 'you',
+      type: 'text',
+      content: text,
+      timestamp: new Date(),
+    });
+
     setSending(true);
 
     try {
