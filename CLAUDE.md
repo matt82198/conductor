@@ -3,7 +3,7 @@
 ## Mission
 Transform agent management from "watch 50 terminal tabs" into "glance at one dashboard, respond to what matters."
 
-## Status: Phase 0 Complete — Spikes Validated, Foundation Built
+## Status: Phase 3 Complete — Core Platform Built
 
 ## Technology Stack
 - **Runtime:** Java 21 (virtual threads are load-bearing), Spring Boot 3.4.4
@@ -74,9 +74,9 @@ export JAVA_HOME="C:/Users/matt8/.jdks/openjdk-25.0.2"
 | Phase | Goal | Status |
 |-------|------|--------|
 | 0 | Spawn agent, see output | **DONE** |
-| 1 | Noise reduction (queue, dedup, filter) | Next |
-| 2 | Human input detection | Planned |
-| 3 | Multi-project support | Planned |
+| 1 | Noise reduction (queue, dedup, filter) | **DONE** |
+| 2 | Human input detection | **DONE** |
+| 3 | Multi-project support | **DONE** |
 | 4 | Task decomposition (meta-agent) | Planned |
 | 5 | IntelliJ plugin | Planned |
 | 6 | Analytics & cost tracking | Planned |

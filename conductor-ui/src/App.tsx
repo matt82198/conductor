@@ -1,45 +1,25 @@
-import { SpawnForm } from './components/SpawnForm';
-import { AgentList } from './components/AgentList';
-import { EventFeed } from './components/EventFeed';
-import { StatusBar } from './components/StatusBar';
+import { useState, useCallback } from 'react';
+import { LoadingScreen } from './components/LoadingScreen';
+import { TaskMainLayout } from './components/TaskMainLayout';
 import { useWebSocket } from './hooks/useWebSocket';
 
 /**
  * Root application layout.
  *
- * ┌──────────────────────────────────────────┐
- * │ SpawnForm                                │
- * ├──────────┬───────────────────────────────┤
- * │ AgentList│ EventFeed                     │
- * │          │                               │
- * ├──────────┴───────────────────────────────┤
- * │ StatusBar                                │
- * └──────────────────────────────────────────┘
+ * On first load, shows a LoadingScreen that polls for server connectivity
+ * and checks Brain status. Once ready, transitions to the main dashboard
+ * with task decomposition support.
  */
 export default function App() {
+  const [loaded, setLoaded] = useState(false);
+  const handleReady = useCallback(() => setLoaded(true), []);
+
   // Establish WebSocket connection to Conductor server
   useWebSocket();
 
-  return (
-    <div className="flex flex-col h-screen w-screen">
-      {/* Top: Spawn form */}
-      <SpawnForm />
+  if (!loaded) {
+    return <LoadingScreen onReady={handleReady} />;
+  }
 
-      {/* Middle: Agent list + Event feed */}
-      <div className="flex flex-1 min-h-0">
-        {/* Left sidebar: Agent list */}
-        <div className="w-56 shrink-0">
-          <AgentList />
-        </div>
-
-        {/* Center: Event feed */}
-        <div className="flex-1 min-w-0">
-          <EventFeed />
-        </div>
-      </div>
-
-      {/* Bottom: Status bar */}
-      <StatusBar />
-    </div>
-  );
+  return <TaskMainLayout />;
 }

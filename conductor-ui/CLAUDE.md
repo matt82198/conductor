@@ -3,7 +3,7 @@
 ## Responsibility
 Desktop app for monitoring agents, responding to human-input requests, spawning agents, and managing noise.
 
-## Status: Phase 0 Complete
+## Status: Phase 0 Complete, Phase 1-2 UI components built, Phase 4 Task Decomposition UI built
 
 ## Setup
 ```bash
@@ -16,10 +16,13 @@ npm start    # Vite dev server + Electron
 
 ### Consumes (from conductor-server)
 - **WebSocket** `ws://localhost:8090/ws/events` — real-time agent events
+- **WebSocket** `ws://localhost:8090/ws/events` — task_progress events (secondary connection via useTaskWebSocket)
 - **REST** `POST /api/agents/spawn` — spawn new agent
 - **REST** `GET /api/agents` — list agents (on reconnect)
 - **REST** `DELETE /api/agents/{id}` — kill agent
 - **REST** `POST /api/agents/{id}/message` — send human response
+- **REST** `POST /api/brain/tasks` — submit prompt for task decomposition (returns DecompositionPlan)
+- **REST** `DELETE /api/brain/tasks/{planId}` — cancel a decomposition plan
 - See `docs/WEBSOCKET-PROTOCOL.md` for full event schema
 
 ### Provides
@@ -45,6 +48,12 @@ StatusBar (bottom)
 | `src/components/AgentList.tsx` | Agent list with state dots |
 | `src/components/EventFeed.tsx` | Scrolling event feed, auto-scroll |
 | `src/components/StatusBar.tsx` | Connection, count, cost |
+| `src/types/taskTypes.ts` | TypeScript interfaces for decomposition plans, subtasks, progress events |
+| `src/stores/taskStore.ts` | Zustand store for task decomposition state (plans, progress events) |
+| `src/hooks/useTaskWebSocket.ts` | Secondary WebSocket for task_progress messages (same endpoint, filters by type) |
+| `src/components/TaskPanel.tsx` | Task decomposition panel: submit form, plan cards, subtask progress |
+| `src/components/TaskMainLayout.tsx` | Extended MainLayout with tabbed right panel (Input / Tasks) |
+| `src/stores/taskStore.test.ts` | Unit tests for task store logic (run via `npx tsx`) |
 
 ## State Management (Zustand)
 - `agents: Map<string, AgentInfo>` — O(1) lookup by ID
@@ -59,9 +68,37 @@ StatusBar (bottom)
 - Electron TypeScript compiled separately to dist-electron/ via tsconfig.electron.json
 - Dark theme only — styled for developer ergonomics
 
+## Task Decomposition (Phase 4) — Integration Notes
+
+The task decomposition UI is fully built as standalone modules. To wire it into the app,
+one change is needed in `src/App.tsx`: replace `<MainLayout />` with `<TaskMainLayout />`.
+
+```tsx
+// In App.tsx, change:
+import { TaskMainLayout } from './components/TaskMainLayout';
+// ... and in the App component:
+return <TaskMainLayout />;
+```
+
+Alternatively, to add `task_progress` handling to the existing WebSocket flow, add
+`data.type === 'task_progress'` to the condition in `useWebSocket.ts` onmessage handler,
+and add the `task_progress` union member to `ServerWsMessage` in `types/events.ts`.
+
+The standalone approach (TaskMainLayout) avoids modifying existing files by using a
+secondary WebSocket connection and a separate Zustand store.
+
+### WebSocket: task_progress message format
+```json
+{ "type": "task_progress", "planId": "...", "completed": 2, "total": 5, "currentPhase": "executing" }
+```
+
+### REST: Task decomposition endpoints
+- `POST /api/brain/tasks` — body: `{ prompt, projectPath }` — returns `DecompositionPlan`
+- `DELETE /api/brain/tasks/{planId}` — cancels a plan
+
 ## Future Phases
-- Phase 1: Filtered feed with urgency badges, mute buttons
-- Phase 2: Human Input panel with quick-respond buttons
+- Phase 1: Filtered feed with urgency badges, mute buttons — **Built**
+- Phase 2: Human Input panel with quick-respond buttons — **Built**
 - Phase 3: Project selector sidebar
-- Phase 4: Task decomposition wizard
+- Phase 4: Task decomposition wizard — **Built** (TaskPanel, TaskMainLayout)
 - Phase 5: IntelliJ plugin companion panel

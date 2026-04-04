@@ -11,3 +11,11 @@ spring:
 conductor:
   agents:
     max-concurrent: 200
+  brain:
+    enabled: false
+    api-key: ${ANTHROPIC_API_KEY:}
+    model: claude-sonnet-4-6
+    confidence-threshold: 0.8
+    max-auto-responses-per-minute: 10
+    behavior-log-path: ${user.home}/.conductor/behavior-log.jsonl
+    context-window-budget: 100000

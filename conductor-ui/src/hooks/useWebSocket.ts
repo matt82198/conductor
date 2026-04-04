@@ -33,9 +33,19 @@ export function useWebSocket(): void {
 
       ws.onmessage = (event) => {
         try {
-          const data: ServerWsMessage = JSON.parse(event.data);
+          const data = JSON.parse(event.data);
+          // Original format: { agentId, eventType, event }
           if (data.agentId && data.eventType) {
-            processWsMessage(data);
+            processWsMessage(data as ServerWsMessage);
+          }
+          // New format: { type: "human_input_needed" | "queued_message" | "brain_response" | "brain_escalation" }
+          else if (
+            data.type === 'human_input_needed' ||
+            data.type === 'queued_message' ||
+            data.type === 'brain_response' ||
+            data.type === 'brain_escalation'
+          ) {
+            processWsMessage(data as ServerWsMessage);
           }
         } catch {
           // skip malformed messages

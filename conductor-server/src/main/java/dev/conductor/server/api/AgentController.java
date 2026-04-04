@@ -3,9 +3,11 @@ package dev.conductor.server.api;
 import dev.conductor.common.AgentRole;
 import dev.conductor.server.agent.AgentRecord;
 import dev.conductor.server.agent.AgentRegistry;
+import dev.conductor.server.brain.behavior.BehaviorLogger;
 import dev.conductor.server.process.ClaudeProcessManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,10 +31,13 @@ public class AgentController {
 
     private final AgentRegistry registry;
     private final ClaudeProcessManager processManager;
+    private final BehaviorLogger behaviorLogger; // nullable — brain module may not be enabled
 
-    public AgentController(AgentRegistry registry, ClaudeProcessManager processManager) {
+    public AgentController(AgentRegistry registry, ClaudeProcessManager processManager,
+                           @Autowired(required = false) BehaviorLogger behaviorLogger) {
         this.registry = registry;
         this.processManager = processManager;
+        this.behaviorLogger = behaviorLogger;
     }
 
     // ─── Spawn ─────────────────────────────────────────────────────────
@@ -56,6 +61,9 @@ public class AgentController {
             AgentRole role = parseRole(request.role());
             AgentRecord agent = processManager.spawnAgent(
                     request.name(), role, request.projectPath(), request.prompt());
+            if (behaviorLogger != null) {
+                behaviorLogger.logSpawn(agent, request.prompt());
+            }
             return ResponseEntity.status(HttpStatus.CREATED).body(agent);
         } catch (IllegalStateException e) {
             log.warn("Spawn rejected: {}", e.getMessage());
@@ -103,7 +111,12 @@ public class AgentController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> killAgent(@PathVariable UUID id) {
         return processManager.killAgent(id)
-                .map(agent -> ResponseEntity.ok(agent))
+                .map(agent -> {
+                    if (behaviorLogger != null) {
+                        behaviorLogger.logKill(agent);
+                    }
+                    return ResponseEntity.ok(agent);
+                })
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -122,6 +135,9 @@ public class AgentController {
     public ResponseEntity<?> sendMessage(@PathVariable UUID id, @RequestBody MessageRequest request) {
         try {
             processManager.sendMessage(id, request.text());
+            if (behaviorLogger != null) {
+                behaviorLogger.logMessage(id, request.text());
+            }
             return ResponseEntity.ok(Map.of("status", "sent"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();

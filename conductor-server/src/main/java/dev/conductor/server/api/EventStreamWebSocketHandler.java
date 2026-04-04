@@ -1,7 +1,11 @@
 package dev.conductor.server.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.conductor.server.brain.decision.BrainEscalationEvent;
+import dev.conductor.server.brain.decision.BrainResponseEvent;
+import dev.conductor.server.humaninput.HumanInputNeededEvent;
 import dev.conductor.server.process.ClaudeProcessManager.AgentStreamEvent;
+import dev.conductor.server.queue.QueuedMessageEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -12,6 +16,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -119,9 +124,118 @@ public class EventStreamWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
+     * Broadcasts human input needed events to all connected clients.
+     */
+    @EventListener
+    public void onHumanInputNeeded(HumanInputNeededEvent event) {
+        if (sessions.isEmpty()) {
+            return;
+        }
+
+        try {
+            Map<String, Object> payload = Map.of(
+                    "type", "human_input_needed",
+                    "request", event.request()
+            );
+            broadcast(objectMapper.writeValueAsString(payload));
+        } catch (Exception e) {
+            log.error("Error broadcasting human input event: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Broadcasts queued message events to all connected clients.
+     */
+    @EventListener
+    public void onQueuedMessage(QueuedMessageEvent event) {
+        if (sessions.isEmpty()) {
+            return;
+        }
+
+        try {
+            Map<String, Object> payload = Map.of(
+                    "type", "queued_message",
+                    "message", event.message()
+            );
+            broadcast(objectMapper.writeValueAsString(payload));
+        } catch (Exception e) {
+            log.error("Error broadcasting queued message event: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Broadcasts brain auto-response events to all connected clients.
+     *
+     * <p>Fired when the Brain module autonomously responds to a human input
+     * request on behalf of the user. The payload includes the response text,
+     * confidence level, and the Brain's reasoning chain.
+     */
+    @EventListener
+    public void onBrainResponse(BrainResponseEvent event) {
+        if (sessions.isEmpty()) return;
+        try {
+            Map<String, Object> payload = Map.of(
+                    "type", "brain_response",
+                    "requestId", event.requestId(),
+                    "agentId", event.agentId(),
+                    "response", event.response(),
+                    "confidence", event.confidence(),
+                    "reasoning", event.reasoning()
+            );
+            broadcast(objectMapper.writeValueAsString(payload));
+        } catch (Exception e) {
+            log.error("Error broadcasting brain response event: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Broadcasts brain escalation events to all connected clients.
+     *
+     * <p>Fired when the Brain module determines it cannot handle a request
+     * autonomously and escalates to the human user. Includes the reason
+     * for escalation and an optional recommendation.
+     */
+    @EventListener
+    public void onBrainEscalation(BrainEscalationEvent event) {
+        if (sessions.isEmpty()) return;
+        try {
+            // Use HashMap because recommendation can be null
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "brain_escalation");
+            payload.put("requestId", event.requestId());
+            payload.put("agentId", event.agentId());
+            payload.put("reason", event.reason());
+            payload.put("recommendation", event.recommendation());
+            payload.put("confidence", event.confidence());
+            broadcast(objectMapper.writeValueAsString(payload));
+        } catch (Exception e) {
+            log.error("Error broadcasting brain escalation event: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
      * Returns the number of currently connected WebSocket clients.
      */
     public int getConnectedClientCount() {
         return sessions.size();
+    }
+
+    // ─── Internal ─────────────────────────────────────────────────────
+
+    private void broadcast(String json) {
+        TextMessage message = new TextMessage(json);
+
+        for (WebSocketSession session : sessions) {
+            if (session.isOpen()) {
+                try {
+                    synchronized (session) {
+                        session.sendMessage(message);
+                    }
+                } catch (IOException e) {
+                    log.debug("Failed to send to session {}: {}", session.getId(), e.getMessage());
+                    sessions.remove(session);
+                }
+            }
+        }
     }
 }

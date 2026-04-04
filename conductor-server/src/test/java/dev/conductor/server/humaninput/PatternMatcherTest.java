@@ -54,7 +54,7 @@ class PatternMatcherTest {
             "which approach would you prefer?",
             "Which option should we go with?",
             "which method is better here?",
-            "Which way should I implement this?",
+            "Which way is better for implementing this?",
             "which strategy aligns with the codebase?"
     })
     void optionSeekingPatterns_detectWithMediumHighConfidence(String text) {

@@ -37,6 +37,9 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
+        <!-- Claude API: uses Spring RestClient directly (no SDK needed) -->
+        <!-- Pattern from medallioGenAi: POST to https://api.anthropic.com/v1/messages -->
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

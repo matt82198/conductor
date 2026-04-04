@@ -3,7 +3,7 @@
 ## Responsibility
 Manage Claude CLI agent processes, route events, serve REST + WebSocket API.
 
-## Status: Phase 0 Complete, compiles and boots
+## Status: Phase 0-3 Complete, compiles and boots
 
 ## Build
 ```bash
@@ -23,10 +23,10 @@ Server starts on port 8090. Virtual threads enabled.
 | **agent** | `dev.conductor.server.agent` | `agent/CLAUDE.md` | Built | 0 |
 | **api** | `dev.conductor.server.api` | `api/CLAUDE.md` | Built | 0 |
 | **config** | `dev.conductor.server.config` | `config/CLAUDE.md` | Built | 0 |
-| **queue** | `dev.conductor.server.queue` | `queue/CLAUDE.md` | Planned | 1 |
-| **notification** | `dev.conductor.server.notification` | `notification/CLAUDE.md` | Planned | 1 |
-| **humaninput** | `dev.conductor.server.humaninput` | `humaninput/CLAUDE.md` | Planned | 2 |
-| **project** | `dev.conductor.server.project` | `project/CLAUDE.md` | Planned | 3 |
+| **queue** | `dev.conductor.server.queue` | `queue/CLAUDE.md` | Built | 1 |
+| **notification** | `dev.conductor.server.notification` | `notification/CLAUDE.md` | Built | 1 |
+| **humaninput** | `dev.conductor.server.humaninput` | `humaninput/CLAUDE.md` | Built | 2 |
+| **project** | `dev.conductor.server.project` | `project/CLAUDE.md` | Built | 3 |
 | **decomposer** | `dev.conductor.server.decomposer` | `decomposer/CLAUDE.md` | Planned | 4 |
 
 ## Event Flow

@@ -30,6 +30,8 @@ function eventTypeColor(type: string): string {
       return 'text-red-400';
     case 'completed':
       return 'text-green-400';
+    case 'brain':
+      return 'text-purple-400';
     case 'spawned':
       return 'text-purple-400';
     case 'state':
@@ -40,17 +42,43 @@ function eventTypeColor(type: string): string {
 }
 
 /**
+ * Urgency badge displayed before event content when urgency is CRITICAL or HIGH.
+ */
+function UrgencyBadge({ urgency }: { urgency: string }) {
+  switch (urgency) {
+    case 'CRITICAL':
+      return (
+        <span className="text-[10px] font-bold tracking-wider px-1 py-0.5 rounded bg-red-500/20 text-accent-red shrink-0">
+          CRIT
+        </span>
+      );
+    case 'HIGH':
+      return (
+        <span className="text-[10px] font-bold tracking-wider px-1 py-0.5 rounded bg-yellow-500/20 text-amber-400 shrink-0">
+          HIGH
+        </span>
+      );
+    default:
+      return null;
+  }
+}
+
+/**
  * Single event row in the feed.
  */
 function EventRow({ event }: { event: FeedEvent }) {
+  const isLow = event.urgency === 'LOW' || event.urgency === 'NOISE';
   return (
-    <div className="flex gap-2 px-3 py-0.5 hover:bg-surface-2 font-mono text-xs leading-relaxed">
+    <div className={`flex gap-2 px-3 py-0.5 hover:bg-surface-2 font-mono text-xs leading-relaxed ${isLow ? 'opacity-50' : ''}`}>
       <span className="text-gray-600 shrink-0">
         [{formatTime(event.timestamp)}]
       </span>
       <span className="text-accent-blue shrink-0 truncate max-w-32">
         {event.agentName}:
       </span>
+      {event.urgency && (event.urgency === 'CRITICAL' || event.urgency === 'HIGH') && (
+        <UrgencyBadge urgency={event.urgency} />
+      )}
       <span className={`${eventTypeColor(event.type)} break-words min-w-0`}>
         {event.content}
       </span>

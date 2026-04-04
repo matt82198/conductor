@@ -25,11 +25,60 @@ export interface AgentInfo {
   lastActivityAt: string;
 }
 
-/** Raw WebSocket message from the server */
-export interface ServerWsMessage {
+export interface HumanInputRequest {
+  requestId: string;
   agentId: string;
-  eventType: 'system' | 'assistant' | 'user' | 'rate_limit_event' | 'result' | 'parse_error';
-  event: any;
+  agentName: string;
+  question: string;
+  suggestedOptions: string[];
+  context: string;
+  urgency: string;
+  detectedAt: string;
+  detectionMethod: string;
+  confidenceScore: number;
+}
+
+export interface QueuedMessage {
+  agentId: string;
+  agentName: string;
+  text: string;
+  urgency: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'NOISE';
+  category: string;
+  timestamp: string;
+  dedupHash: string;
+  batchId: string | null;
+}
+
+/** Raw WebSocket message from the server */
+export type ServerWsMessage =
+  | { agentId: string; eventType: 'system' | 'assistant' | 'user' | 'rate_limit_event' | 'result' | 'parse_error'; event: any }
+  | { type: 'human_input_needed'; request: HumanInputRequest }
+  | { type: 'queued_message'; message: QueuedMessage }
+  | { type: 'brain_response'; requestId: string; agentId: string; response: string; confidence: number; reasoning: string }
+  | { type: 'brain_escalation'; requestId: string; agentId: string; reason: string; recommendation: string | null; confidence: number };
+
+export interface BrainStatus {
+  enabled: boolean;
+  model: string;
+  confidenceThreshold: number;
+  behaviorLogSize: number;
+  projectsIndexed: number;
+}
+
+export interface BrainResponseEvent {
+  requestId: string;
+  agentId: string;
+  response: string;
+  confidence: number;
+  reasoning: string;
+}
+
+export interface BrainEscalationEvent {
+  requestId: string;
+  agentId: string;
+  reason: string;
+  recommendation: string | null;
+  confidence: number;
 }
 
 export interface SpawnAgentRequest {

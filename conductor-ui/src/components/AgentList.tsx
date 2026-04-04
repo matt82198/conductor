@@ -1,5 +1,9 @@
+import { useState, useCallback } from 'react';
 import { useAgents } from '../hooks/useAgents';
+import { useConductorStore } from '../stores/conductorStore';
 import type { AgentState } from '../types/events';
+
+const API_BASE = 'http://localhost:8090';
 
 /**
  * Color and label for each agent state.
@@ -49,8 +53,44 @@ const STATE_DISPLAY: Record<
  * Left sidebar panel showing all registered agents with their current state.
  * Agents are sorted by priority: blocked first, then active, then completed.
  */
+/**
+ * Returns true if the agent is the Conductor brain agent.
+ */
+function isConductorAgent(agent: { name: string; role: string }): boolean {
+  return agent.name === 'conductor' || agent.role === 'CONDUCTOR';
+}
+
 export function AgentList() {
   const { agents, stats } = useAgents();
+  const mutedAgents = useConductorStore((s) => s.mutedAgents);
+  const setMuted = useConductorStore((s) => s.setMuted);
+  const [mutingId, setMutingId] = useState<string | null>(null);
+
+  // Separate conductor agent from regular agents
+  const conductorAgent = agents.find(isConductorAgent);
+  const regularAgents = agents.filter((a) => !isConductorAgent(a));
+
+  const toggleMute = useCallback(
+    async (agentId: string) => {
+      const currentlyMuted = mutedAgents.has(agentId);
+      setMutingId(agentId);
+      try {
+        const res = await fetch(`${API_BASE}/api/agents/${agentId}/mute`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ muted: !currentlyMuted }),
+        });
+        if (res.ok) {
+          setMuted(agentId, !currentlyMuted);
+        }
+      } catch {
+        // Silently fail — mute is non-critical
+      } finally {
+        setMutingId(null);
+      }
+    },
+    [mutedAgents, setMuted],
+  );
 
   return (
     <div className="flex flex-col h-full bg-surface-1 border-r border-surface-3">
@@ -66,7 +106,25 @@ export function AgentList() {
 
       {/* Agent list */}
       <div className="flex-1 overflow-y-auto">
-        {agents.length === 0 ? (
+        {/* Conductor Brain agent — always pinned at top */}
+        {conductorAgent && (
+          <div className="px-3 py-2 border-b border-surface-3 bg-purple-500/5">
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+              <span className="text-sm text-purple-300 font-mono font-bold">
+                {conductorAgent.name}
+              </span>
+            </div>
+            <div className="mt-1 ml-4">
+              <span className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded text-purple-300 bg-purple-500/20">
+                CONDUCTOR
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Regular agents */}
+        {regularAgents.length === 0 && !conductorAgent ? (
           <div className="px-3 py-8 text-center text-gray-600 text-xs">
             No agents running.
             <br />
@@ -74,13 +132,14 @@ export function AgentList() {
           </div>
         ) : (
           <ul className="py-1">
-            {agents.map((agent) => {
+            {regularAgents.map((agent) => {
               const display =
                 STATE_DISPLAY[agent.state] ?? STATE_DISPLAY.ACTIVE;
+              const isMuted = mutedAgents.has(agent.id);
               return (
                 <li
                   key={agent.id}
-                  className="px-3 py-2 hover:bg-surface-2 cursor-default transition-colors"
+                  className={`px-3 py-2 hover:bg-surface-2 cursor-default transition-colors ${isMuted ? 'opacity-50' : ''}`}
                 >
                   <div className="flex items-center gap-2">
                     {/* State dot */}
@@ -95,9 +154,25 @@ export function AgentList() {
                               : 'bg-accent-green'
                       }`}
                     />
-                    <span className="text-sm text-gray-200 font-mono truncate">
+                    <span className="text-sm text-gray-200 font-mono truncate flex-1 min-w-0">
                       {agent.name}
                     </span>
+                    {/* Mute toggle */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMute(agent.id);
+                      }}
+                      disabled={mutingId === agent.id}
+                      title={isMuted ? 'Unmute agent' : 'Mute agent'}
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors shrink-0 ${
+                        isMuted
+                          ? 'text-accent-red border-red-500/30 bg-red-500/10 hover:bg-red-500/20'
+                          : 'text-gray-600 border-surface-3 hover:text-gray-400 hover:border-gray-500'
+                      }`}
+                    >
+                      {isMuted ? 'M' : 'M'}
+                    </button>
                   </div>
                   <div className="flex items-center gap-2 mt-1 ml-4">
                     <span
@@ -105,6 +180,11 @@ export function AgentList() {
                     >
                       {display.label}
                     </span>
+                    {isMuted && (
+                      <span className="text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded text-accent-red bg-red-500/20">
+                        MUTED
+                      </span>
+                    )}
                     <span className="text-[10px] text-gray-600 truncate">
                       {agent.role}
                     </span>
