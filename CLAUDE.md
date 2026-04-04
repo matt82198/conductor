@@ -77,10 +77,24 @@ export JAVA_HOME="C:/Users/matt8/.jdks/openjdk-25.0.2"
 | 1 | Noise reduction (queue, dedup, filter) | **DONE** |
 | 2 | Human input detection | **DONE** |
 | 3 | Multi-project support | **DONE** |
-| 4 | Task decomposition (meta-agent) | Planned |
+| 4 | Brain + task decomposition + command bar | **DONE** |
 | 5 | IntelliJ plugin | Planned |
 | 6 | Analytics & cost tracking | Planned |
 | 7 | Team features | Planned |
+
+## A Note From the Builder
+
+This project was built in a single extended session that is itself a proof of concept for Conductor's vision. The session operated exactly as Conductor should:
+
+- **Honest assessment first** — identified what existed, what was broken, what was missing
+- **Parallel delegation** — up to 8 agents running simultaneously on independent domains
+- **CLAUDE.md as protocol** — per-domain contracts enabled safe parallel work across agents
+- **Immediate integration** — fixed conflicts and kept the build green as agents landed
+- **No deferral** — when architectural issues were identified, ALL were fixed in parallel, not triaged
+
+This session produced ~23,000 lines of code, 533 tests, and a full Electron dashboard in roughly one sitting. A typical serial Claude session would have taken 10x longer because it would work on one file at a time, in one domain at a time.
+
+The difference is the orchestration pattern: read the contracts, scope the work, delegate in parallel, integrate as results arrive. That's exactly what Conductor's Brain should do autonomously. This session was Conductor, running on a human.
 
 ## Reference Docs
 | File | Contents |
