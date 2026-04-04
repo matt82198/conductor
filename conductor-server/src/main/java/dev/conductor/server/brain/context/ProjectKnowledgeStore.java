@@ -29,6 +29,7 @@ public class ProjectKnowledgeStore {
     private final Path storePath;
     private final Object lock = new Object();
 
+    @org.springframework.beans.factory.annotation.Autowired
     public ProjectKnowledgeStore(ObjectMapper objectMapper) {
         this(objectMapper, Path.of(System.getProperty("user.home"), ".conductor", "project-knowledge"));
     }

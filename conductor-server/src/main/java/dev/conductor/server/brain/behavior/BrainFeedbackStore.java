@@ -40,6 +40,7 @@ public class BrainFeedbackStore {
      *
      * @param objectMapper Jackson ObjectMapper for JSON serialization
      */
+    @org.springframework.beans.factory.annotation.Autowired
     public BrainFeedbackStore(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         this.feedbackPath = Path.of(System.getProperty("user.home"), ".conductor", "brain-feedback.jsonl");

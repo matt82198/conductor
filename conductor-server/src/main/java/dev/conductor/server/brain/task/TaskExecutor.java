@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * are synchronized on the plan ID to prevent race conditions when multiple
  * agents from the same wave complete simultaneously.
  */
-@Service
+@Service("conductorTaskExecutor")
 public class TaskExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(TaskExecutor.class);
