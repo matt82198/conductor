@@ -172,21 +172,23 @@ export const useConductorStore = create<ConductorState>((set, get) => ({
 
           if (block.type === 'thinking') {
             s.updateAgent(agentId, { state: 'THINKING' as AgentState });
-            s.addEvent({ id: eid(), agentId, agentName: name, type: 'thinking', content: 'thinking...', timestamp: now });
+            s.addEvent({ id: eid(), agentId, agentName: name, type: 'thinking', content: block.thinking ?? 'thinking...', timestamp: now });
           } else if (block.type === 'tool_use') {
             s.updateAgent(agentId, { state: 'USING_TOOL' as AgentState });
-            s.addEvent({ id: eid(), agentId, agentName: name, type: 'tool_use', content: `Using ${block.name ?? 'tool'}`, timestamp: now });
+            const toolDetail = block.input ? `${block.name ?? 'tool'}: ${typeof block.input === 'string' ? block.input : JSON.stringify(block.input)}` : `Using ${block.name ?? 'tool'}`;
+            s.addEvent({ id: eid(), agentId, agentName: name, type: 'tool_use', content: toolDetail, timestamp: now });
           } else if (block.type === 'text') {
             s.updateAgent(agentId, { state: 'ACTIVE' as AgentState });
-            const text = block.text?.length > 300 ? block.text.slice(0, 300) + '...' : (block.text ?? '');
-            s.addEvent({ id: eid(), agentId, agentName: name, type: 'text', content: text, timestamp: now });
+            s.addEvent({ id: eid(), agentId, agentName: name, type: 'text', content: block.text ?? '', timestamp: now });
           }
           break;
         }
         case 'user': {
           s.updateAgent(agentId, { state: 'ACTIVE' as AgentState });
-          const isErr = event.message?.content?.[0]?.is_error;
-          s.addEvent({ id: eid(), agentId, agentName: name, type: 'tool_result', content: isErr ? 'Tool error' : 'Tool result received', timestamp: now });
+          const toolContent = event.message?.content?.[0];
+          const isErr = toolContent?.is_error;
+          const resultText = toolContent?.content ?? toolContent?.text ?? (isErr ? 'Tool error' : 'Tool result received');
+          s.addEvent({ id: eid(), agentId, agentName: name, type: 'tool_result', content: typeof resultText === 'string' ? resultText : JSON.stringify(resultText), timestamp: now });
           break;
         }
         case 'result': {
