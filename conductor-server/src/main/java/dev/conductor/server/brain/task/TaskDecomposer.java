@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.conductor.common.AgentRole;
 import dev.conductor.server.brain.BrainProperties;
+import dev.conductor.server.brain.context.AgentDefinition;
 import dev.conductor.server.brain.context.ContextIndex;
 import dev.conductor.server.brain.context.ContextIngestionService;
+import dev.conductor.server.brain.context.PersonalKnowledge;
+import dev.conductor.server.brain.context.PersonalKnowledgeScanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.Nullable;
@@ -34,7 +37,7 @@ public class TaskDecomposer {
 
     private static final Logger log = LoggerFactory.getLogger(TaskDecomposer.class);
 
-    private static final String SYSTEM_PROMPT = """
+    private static final String SYSTEM_PROMPT_BASE = """
             You are a task decomposition engine for Conductor, an agent orchestration platform.
             Given a high-level prompt and project context, break it into subtasks that can be executed by specialized agents.
 
@@ -46,10 +49,13 @@ public class TaskDecomposer {
             - REVIEWER: Review changes for quality and security
             - GENERAL: Any task that doesn't fit the above
 
+            %s
+
             Rules:
             - First subtask should usually be EXPLORER to understand the codebase
             - Last subtask should usually be REVIEWER or TESTER
             - Each subtask gets its own agent — keep scopes narrow
+            - If a custom agent is a better fit than a generic role, use it by setting "customAgent" to its name
             - Set dependsOn for tasks that need previous tasks' output
             - Set contextFrom for tasks that benefit from another task's discoveries
             - 2-7 subtasks is ideal. Don't over-decompose.
@@ -61,6 +67,7 @@ public class TaskDecomposer {
                   "name": "short-name",
                   "description": "What this agent should do",
                   "role": "EXPLORER|FEATURE_ENGINEER|TESTER|REFACTORER|REVIEWER|GENERAL",
+                  "customAgent": "agent-name-if-applicable-or-null",
                   "prompt": "The specific prompt for this agent",
                   "dependsOn": ["name-of-dependency"],
                   "contextFrom": ["name-of-context-source"],
@@ -81,21 +88,22 @@ public class TaskDecomposer {
     @Nullable
     private final ContextIngestionService contextIngestionService;
 
+    @Nullable
+    private final PersonalKnowledgeScanner personalKnowledgeScanner;
+
     /**
      * Full constructor for production use — Spring will inject all dependencies.
-     *
-     * @param brainProperties         configuration (API key, model) — nullable for tests
-     * @param objectMapper            JSON serializer/deserializer — nullable for tests
-     * @param contextIngestionService context rendering service — nullable for tests
      */
     public TaskDecomposer(
             @Nullable BrainProperties brainProperties,
             @Nullable ObjectMapper objectMapper,
-            @Nullable ContextIngestionService contextIngestionService
+            @Nullable ContextIngestionService contextIngestionService,
+            @Nullable PersonalKnowledgeScanner personalKnowledgeScanner
     ) {
         this.brainProperties = brainProperties;
         this.objectMapper = objectMapper;
         this.contextIngestionService = contextIngestionService;
+        this.personalKnowledgeScanner = personalKnowledgeScanner;
 
         if (brainProperties != null
                 && brainProperties.apiKey() != null
@@ -122,7 +130,7 @@ public class TaskDecomposer {
      * Always uses the template fallback.
      */
     public TaskDecomposer() {
-        this(null, null, null);
+        this(null, null, null, null);
     }
 
     /**
@@ -262,11 +270,12 @@ public class TaskDecomposer {
             throws Exception {
 
         String userMessage = buildUserMessage(prompt, projectPath, context);
+        String systemPrompt = buildSystemPrompt();
 
         Map<String, Object> requestBody = Map.of(
                 "model", brainProperties.model(),
                 "max_tokens", 2048,
-                "system", SYSTEM_PROMPT,
+                "system", systemPrompt,
                 "messages", List.of(
                         Map.of("role", "user", "content", userMessage)
                 )
@@ -287,6 +296,31 @@ public class TaskDecomposer {
                 response != null ? response.length() : "null");
 
         return parseApiResponse(response, prompt, projectPath);
+    }
+
+    /**
+     * Builds the system prompt, injecting custom agent definitions when available.
+     */
+    private String buildSystemPrompt() {
+        String agentSection = "";
+        if (personalKnowledgeScanner != null) {
+            PersonalKnowledge pk = personalKnowledgeScanner.scan();
+            if (!pk.agents().isEmpty()) {
+                StringBuilder sb = new StringBuilder("Custom agents available (use these when they fit better than generic roles):\n");
+                for (AgentDefinition agent : pk.agents()) {
+                    sb.append("- ").append(agent.name());
+                    if (!agent.description().isBlank()) {
+                        // Truncate long descriptions for the prompt
+                        String desc = agent.description();
+                        if (desc.length() > 200) desc = desc.substring(0, 200) + "...";
+                        sb.append(": ").append(desc);
+                    }
+                    sb.append("\n");
+                }
+                agentSection = sb.toString();
+            }
+        }
+        return String.format(SYSTEM_PROMPT_BASE, agentSection);
     }
 
     /**
@@ -393,12 +427,28 @@ public class TaskDecomposer {
             // Resolve contextFrom names to IDs
             List<String> contextFrom = resolveNames(node.get("contextFrom"), nameToId);
 
+            // Check for custom agent assignment
+            String customAgentName = node.has("customAgent") && !node.get("customAgent").isNull()
+                    ? node.get("customAgent").asText() : null;
+            String agentSystemPrompt = null;
+            if (customAgentName != null && personalKnowledgeScanner != null) {
+                agentSystemPrompt = personalKnowledgeScanner.scan().agents().stream()
+                        .filter(a -> a.name().equals(customAgentName))
+                        .map(AgentDefinition::systemPrompt)
+                        .findFirst().orElse(null);
+                if (agentSystemPrompt != null) {
+                    log.info("Subtask '{}' assigned custom agent '{}' with system prompt ({} chars)",
+                            name, customAgentName, agentSystemPrompt.length());
+                }
+            }
+
             subtasks.add(new Subtask(
                     id, name, description, role,
                     dependsOn, contextFrom,
                     projectPath, subtaskPrompt, successCriteria,
                     SubtaskStatus.PENDING,
-                    null, null, null, null
+                    null, null, null, null,
+                    customAgentName, agentSystemPrompt
             ));
         }
 

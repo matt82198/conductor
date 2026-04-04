@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -17,6 +19,9 @@ import java.util.stream.Stream;
  * Scans {@code ~/.claude/} for personal knowledge: agent definitions, memories,
  * commands, and plans. Produces a {@link PersonalKnowledge} aggregate that the
  * Brain uses for full system awareness.
+ *
+ * <p>Results are cached for {@link #CACHE_TTL} to avoid re-reading ~300KB of files
+ * on every prompt render. Call {@link #refresh()} to force a re-scan.
  */
 @Service
 public class PersonalKnowledgeScanner {
@@ -24,15 +29,32 @@ public class PersonalKnowledgeScanner {
     private static final Logger log = LoggerFactory.getLogger(PersonalKnowledgeScanner.class);
     private static final Pattern FRONTMATTER = Pattern.compile("^---\\s*\\n(.*?)\\n---", Pattern.DOTALL);
     private static final Pattern FIELD = Pattern.compile("^(\\w+):\\s*(.+)$", Pattern.MULTILINE);
+    private static final Duration CACHE_TTL = Duration.ofMinutes(5);
+
+    private volatile PersonalKnowledge cached;
+    private volatile Instant cachedAt;
 
     /**
-     * Scans all personal knowledge from ~/.claude/.
+     * Returns cached personal knowledge, re-scanning if stale or missing.
      */
     public PersonalKnowledge scan() {
+        if (cached != null && cachedAt != null
+                && Duration.between(cachedAt, Instant.now()).compareTo(CACHE_TTL) < 0) {
+            return cached;
+        }
+        return refresh();
+    }
+
+    /**
+     * Forces a full re-scan from disk, replacing the cache.
+     */
+    public PersonalKnowledge refresh() {
         Path claudeDir = Path.of(System.getProperty("user.home"), ".claude");
         if (!Files.isDirectory(claudeDir)) {
             log.debug("No ~/.claude/ directory found");
-            return new PersonalKnowledge(List.of(), List.of(), List.of(), List.of(), null);
+            cached = new PersonalKnowledge(List.of(), List.of(), List.of(), List.of(), null);
+            cachedAt = Instant.now();
+            return cached;
         }
 
         List<AgentDefinition> agents = scanAgents(claudeDir);
@@ -43,7 +65,9 @@ public class PersonalKnowledgeScanner {
         log.info("Personal knowledge scan: {} agents, {} memories, {} commands, {} plans",
                 agents.size(), memories.size(), commands.size(), plans.size());
 
-        return new PersonalKnowledge(agents, memories, commands, plans, null);
+        cached = new PersonalKnowledge(agents, memories, commands, plans, null);
+        cachedAt = Instant.now();
+        return cached;
     }
 
     /**

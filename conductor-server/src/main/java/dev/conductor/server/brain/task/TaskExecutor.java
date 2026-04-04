@@ -284,11 +284,19 @@ public class TaskExecutor {
                     planId.substring(0, Math.min(8, planId.length())),
                     subtask.name().replaceAll("[^a-zA-Z0-9-]", "-").toLowerCase());
 
+            // If a custom agent has a system prompt, prepend it to the task prompt
+            String finalPrompt = subtask.prompt();
+            if (subtask.systemPrompt() != null && !subtask.systemPrompt().isBlank()) {
+                finalPrompt = subtask.systemPrompt() + "\n\n---\n\n" + finalPrompt;
+                log.info("Injecting custom agent '{}' system prompt ({} chars) for subtask '{}'",
+                        subtask.customAgentName(), subtask.systemPrompt().length(), subtask.name());
+            }
+
             AgentRecord agent = processManager.spawnAgent(
                     agentName,
                     subtask.role(),
                     subtask.projectPath(),
-                    subtask.prompt()
+                    finalPrompt
             );
 
             // Update subtask with agent ID and RUNNING status

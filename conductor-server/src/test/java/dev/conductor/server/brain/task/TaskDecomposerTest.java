@@ -25,7 +25,7 @@ class TaskDecomposerTest {
     @BeforeEach
     void setUp() {
         // No API key, no ObjectMapper, no ContextIngestionService → template fallback
-        decomposer = new TaskDecomposer(null, null, null);
+        decomposer = new TaskDecomposer(null, null, null, null);
         emptyContext = new ContextIndex(List.of(), null, null);
     }
 
@@ -184,7 +184,7 @@ class TaskDecomposerTest {
     @Test
     void decompose_noApiKey_usesTemplate() {
         // Constructed with null properties → no API key → template fallback
-        TaskDecomposer noApiDecomposer = new TaskDecomposer(null, null, null);
+        TaskDecomposer noApiDecomposer = new TaskDecomposer(null, null, null, null);
         DecompositionPlan plan = noApiDecomposer.decompose("Build a REST API", "/project", emptyContext);
 
         // Template always produces exactly 3 subtasks: EXPLORER, FEATURE_ENGINEER, REVIEWER
@@ -201,7 +201,7 @@ class TaskDecomposerTest {
                 true, "   ", null, 0, 0, null, 0
         );
         TaskDecomposer blankKeyDecomposer = new TaskDecomposer(
-                blankKeyProps, new com.fasterxml.jackson.databind.ObjectMapper(), null
+                blankKeyProps, new com.fasterxml.jackson.databind.ObjectMapper(), null, null
         );
 
         DecompositionPlan plan = blankKeyDecomposer.decompose("Add logging", "/project", emptyContext);

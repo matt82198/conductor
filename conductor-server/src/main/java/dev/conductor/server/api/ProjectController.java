@@ -107,6 +107,23 @@ public class ProjectController {
 
     record ScanRequest(String rootPath) {}
 
+    // ─── Lookup by Name ────────────────────────────────────────────────
+
+    /**
+     * Looks up a project by name (case-insensitive) or ID.
+     *
+     * @param nameOrId the project name (e.g., "billing") or UUID
+     * @return the project record, or 404
+     */
+    @GetMapping("/{nameOrId}")
+    public ResponseEntity<?> getProject(@PathVariable String nameOrId) {
+        // Try by ID first, then by name
+        return registry.get(nameOrId)
+                .or(() -> registry.getByName(nameOrId))
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     // ─── Remove ───────────────────────────────────────────────────────
 
     /**

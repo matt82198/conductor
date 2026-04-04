@@ -45,7 +45,9 @@ public record Subtask(
         UUID agentId,
         String result,
         Instant startedAt,
-        Instant completedAt
+        Instant completedAt,
+        String customAgentName,
+        String systemPrompt
 ) {
 
     public Subtask {
@@ -55,12 +57,22 @@ public record Subtask(
         if (status == null) status = SubtaskStatus.PENDING;
     }
 
+    /** Backwards-compatible constructor without custom agent fields. */
+    public Subtask(String subtaskId, String name, String description, AgentRole role,
+                   List<String> dependsOn, List<String> contextFrom, String projectPath,
+                   String prompt, String successCriteria, SubtaskStatus status,
+                   UUID agentId, String result, Instant startedAt, Instant completedAt) {
+        this(subtaskId, name, description, role, dependsOn, contextFrom, projectPath,
+                prompt, successCriteria, status, agentId, result, startedAt, completedAt, null, null);
+    }
+
     /**
      * Returns a copy with the given status.
      */
     public Subtask withStatus(SubtaskStatus newStatus) {
         return new Subtask(subtaskId, name, description, role, dependsOn, contextFrom,
-                projectPath, prompt, successCriteria, newStatus, agentId, result, startedAt, completedAt);
+                projectPath, prompt, successCriteria, newStatus, agentId, result, startedAt, completedAt,
+                customAgentName, systemPrompt);
     }
 
     /**
@@ -68,7 +80,8 @@ public record Subtask(
      */
     public Subtask withAgent(UUID newAgentId) {
         return new Subtask(subtaskId, name, description, role, dependsOn, contextFrom,
-                projectPath, prompt, successCriteria, status, newAgentId, result, Instant.now(), completedAt);
+                projectPath, prompt, successCriteria, status, newAgentId, result, Instant.now(), completedAt,
+                customAgentName, systemPrompt);
     }
 
     /**
@@ -76,6 +89,7 @@ public record Subtask(
      */
     public Subtask withResult(String newResult, SubtaskStatus newStatus) {
         return new Subtask(subtaskId, name, description, role, dependsOn, contextFrom,
-                projectPath, prompt, successCriteria, newStatus, agentId, newResult, startedAt, Instant.now());
+                projectPath, prompt, successCriteria, newStatus, agentId, newResult, startedAt, Instant.now(),
+                customAgentName, systemPrompt);
     }
 }

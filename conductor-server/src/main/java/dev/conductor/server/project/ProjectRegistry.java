@@ -122,6 +122,18 @@ public class ProjectRegistry {
     }
 
     /**
+     * Returns the project record whose name matches (case-insensitive).
+     * If multiple projects share a name, returns the first match.
+     */
+    public Optional<ProjectRecord> getByName(String name) {
+        if (name == null || name.isBlank()) return Optional.empty();
+        String lower = name.toLowerCase();
+        return projects.values().stream()
+                .filter(p -> p.name().toLowerCase().equals(lower))
+                .findFirst();
+    }
+
+    /**
      * Returns the number of currently registered projects.
      */
     public int size() {
