@@ -1,6 +1,7 @@
 package dev.conductor.server.brain.task;
 
 import dev.conductor.common.AgentRole;
+import dev.conductor.server.brain.BrainProperties;
 import dev.conductor.server.brain.context.ContextIndex;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,7 +12,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link TaskDecomposer}.
- * Validates the template-based decomposition strategy for Phase 4C.
+ * Validates both template fallback and API-mode behavior.
+ *
+ * <p>Tests use the no-arg constructor (null API dependencies) so they always
+ * hit the template fallback — no real API calls are made.
  */
 class TaskDecomposerTest {
 
@@ -20,7 +24,8 @@ class TaskDecomposerTest {
 
     @BeforeEach
     void setUp() {
-        decomposer = new TaskDecomposer();
+        // No API key, no ObjectMapper, no ContextIngestionService → template fallback
+        decomposer = new TaskDecomposer(null, null, null);
         emptyContext = new ContextIndex(List.of(), null, null);
     }
 
@@ -172,5 +177,67 @@ class TaskDecomposerTest {
         DecompositionPlan plan = decomposer.decompose("Add a feature", "/project", emptyContext);
         long distinctIds = plan.subtasks().stream().map(Subtask::subtaskId).distinct().count();
         assertEquals(plan.subtasks().size(), distinctIds);
+    }
+
+    // ─── API fallback tests ──────────────────────────────────────────
+
+    @Test
+    void decompose_noApiKey_usesTemplate() {
+        // Constructed with null properties → no API key → template fallback
+        TaskDecomposer noApiDecomposer = new TaskDecomposer(null, null, null);
+        DecompositionPlan plan = noApiDecomposer.decompose("Build a REST API", "/project", emptyContext);
+
+        // Template always produces exactly 3 subtasks: EXPLORER, FEATURE_ENGINEER, REVIEWER
+        assertEquals(3, plan.subtasks().size());
+        assertEquals(AgentRole.EXPLORER, plan.subtasks().get(0).role());
+        assertEquals(AgentRole.FEATURE_ENGINEER, plan.subtasks().get(1).role());
+        assertEquals(AgentRole.REVIEWER, plan.subtasks().get(2).role());
+    }
+
+    @Test
+    void decompose_blankApiKey_usesTemplate() {
+        // BrainProperties with blank API key → no RestClient built → template fallback
+        BrainProperties blankKeyProps = new BrainProperties(
+                true, "   ", null, 0, 0, null, 0
+        );
+        TaskDecomposer blankKeyDecomposer = new TaskDecomposer(
+                blankKeyProps, new com.fasterxml.jackson.databind.ObjectMapper(), null
+        );
+
+        DecompositionPlan plan = blankKeyDecomposer.decompose("Add logging", "/project", emptyContext);
+        assertEquals(3, plan.subtasks().size());
+        assertEquals(AgentRole.EXPLORER, plan.subtasks().get(0).role());
+    }
+
+    @Test
+    void decompose_noArgConstructor_usesTemplate() {
+        // No-arg constructor → always template
+        TaskDecomposer noArgDecomposer = new TaskDecomposer();
+        DecompositionPlan plan = noArgDecomposer.decompose("Refactor auth", "/project", emptyContext);
+
+        assertEquals(3, plan.subtasks().size());
+        assertEquals("Explore codebase", plan.subtasks().get(0).name());
+        assertEquals("Implement changes", plan.subtasks().get(1).name());
+        assertEquals("Review changes", plan.subtasks().get(2).name());
+    }
+
+    @Test
+    void decomposeFromTemplate_directCall_producesStandard3Step() {
+        // Directly call the template method
+        DecompositionPlan plan = decomposer.decomposeFromTemplate("Add caching", "/project");
+
+        assertEquals(3, plan.subtasks().size());
+        assertEquals(AgentRole.EXPLORER, plan.subtasks().get(0).role());
+        assertEquals(AgentRole.FEATURE_ENGINEER, plan.subtasks().get(1).role());
+        assertEquals(AgentRole.REVIEWER, plan.subtasks().get(2).role());
+
+        // Verify dependency wiring
+        Subtask explore = plan.subtasks().get(0);
+        Subtask implement = plan.subtasks().get(1);
+        Subtask review = plan.subtasks().get(2);
+
+        assertTrue(explore.dependsOn().isEmpty());
+        assertTrue(implement.dependsOn().contains(explore.subtaskId()));
+        assertTrue(review.dependsOn().contains(implement.subtaskId()));
     }
 }

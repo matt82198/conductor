@@ -40,21 +40,23 @@ class BehaviorModelBuilderTest {
         String logPath = tempDir.resolve("behavior-log.jsonl").toString();
         BrainProperties props = new BrainProperties(false, null, null, 0.8, 10, logPath, 100000);
         behaviorLog = new BehaviorLog(objectMapper, props);
-        builder = new BehaviorModelBuilder(behaviorLog);
+        builder = new BehaviorModelBuilder(behaviorLog, null);
     }
 
     // ─── Empty model ──────────────────────────────────────────────────
 
     @Test
-    void empty_log_produces_empty_model() {
+    void empty_log_produces_bootstrap_model() {
         BehaviorModel model = builder.build();
 
         assertTrue(model.responsePatterns().isEmpty());
-        assertEquals(0.0, model.overallApprovalRate());
-        assertEquals(0.0, model.dismissalRate());
-        assertEquals(0, model.averageResponseWordCount());
-        assertTrue(model.autoApprovePatterns().isEmpty());
-        assertTrue(model.alwaysEscalatePatterns().isEmpty());
+        assertEquals(0.8, model.overallApprovalRate(), 0.01);
+        assertEquals(0.1, model.dismissalRate(), 0.01);
+        assertEquals(15, model.averageResponseWordCount());
+        assertFalse(model.autoApprovePatterns().isEmpty(),
+                "Bootstrap model should have auto-approve patterns");
+        assertFalse(model.alwaysEscalatePatterns().isEmpty(),
+                "Bootstrap model should have always-escalate patterns");
         assertNotNull(model.lastUpdatedAt());
     }
 

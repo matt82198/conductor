@@ -1,25 +1,31 @@
 import { useState, useCallback } from 'react';
 import { LoadingScreen } from './components/LoadingScreen';
-import { TaskMainLayout } from './components/TaskMainLayout';
-import { useWebSocket } from './hooks/useWebSocket';
+import { WelcomeScreen } from './components/WelcomeScreen';
+import { MainDashboard } from './components/MainDashboard';
 
 /**
  * Root application layout.
  *
- * On first load, shows a LoadingScreen that polls for server connectivity
- * and checks Brain status. Once ready, transitions to the main dashboard
- * with task decomposition support.
+ * Flow: LoadingScreen → WelcomeScreen → MainDashboard
+ *
+ * The LoadingScreen polls for server connectivity and Brain status.
+ * The WelcomeScreen is a premium splash (press any key to skip).
+ * The MainDashboard is the unified workspace with single WebSocket.
  */
 export default function App() {
   const [loaded, setLoaded] = useState(false);
-  const handleReady = useCallback(() => setLoaded(true), []);
+  const [welcomed, setWelcomed] = useState(false);
 
-  // Establish WebSocket connection to Conductor server
-  useWebSocket();
+  const handleReady = useCallback(() => setLoaded(true), []);
+  const handleEnter = useCallback(() => setWelcomed(true), []);
 
   if (!loaded) {
     return <LoadingScreen onReady={handleReady} />;
   }
 
-  return <TaskMainLayout />;
+  if (!welcomed) {
+    return <WelcomeScreen onEnter={handleEnter} />;
+  }
+
+  return <MainDashboard />;
 }

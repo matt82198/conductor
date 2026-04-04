@@ -118,54 +118,10 @@ public class BrainDecisionEngine {
             return;
         }
 
-        // Step 3: Call Claude API if available
-        if (brainApiClient != null) {
-            try {
-                ContextIndex contextIndex = contextIngestionService.buildIndex();
-                String contextPrompt = contextIngestionService.renderForPrompt(
-                        contextIndex, null, brainProperties.contextWindowBudget());
-                Optional<BrainDecision> apiDecision = brainApiClient.evaluate(request, contextPrompt, model);
-
-                if (apiDecision.isPresent()) {
-                    BrainDecision decision = apiDecision.get();
-                    if ("RESPOND".equals(decision.action())
-                            && decision.response() != null
-                            && decision.confidence() >= brainProperties.confidenceThreshold()) {
-                        try {
-                            humanInputResponder.respond(request.requestId(), decision.response());
-                            eventPublisher.publishEvent(new BrainResponseEvent(
-                                    request.requestId(),
-                                    request.agentId().toString(),
-                                    decision.response(),
-                                    decision.confidence(),
-                                    "API decision: " + decision.reasoning(),
-                                    Instant.now()));
-                            log.info("Brain auto-responded via API to {} (confidence={})",
-                                    request.requestId(), decision.confidence());
-                            return;
-                        } catch (Exception e) {
-                            log.error("Brain failed to send API response to {}: {}",
-                                    request.requestId(), e.getMessage());
-                        }
-                    }
-                    // API decided to escalate or confidence too low
-                    log.debug("Brain API decided to escalate: {} (confidence={}, reasoning={})",
-                            request.requestId(), decision.confidence(), decision.reasoning());
-                    eventPublisher.publishEvent(new BrainEscalationEvent(
-                            request.requestId(),
-                            request.agentId().toString(),
-                            decision.reasoning() != null ? decision.reasoning() : "API decided to escalate",
-                            decision.response(),
-                            decision.confidence(),
-                            Instant.now()));
-                    return;
-                }
-            } catch (Exception e) {
-                log.error("Brain API call failed for {}: {}", request.requestId(), e.getMessage());
-            }
-        }
-
-        // Step 4: No behavior match, no API — escalate to human
+        // Step 3: Escalate to human — the local agent has the context, not the Brain API.
+        // Brain API is reserved for orchestration (task decomposition, project analysis,
+        // command interpretation) — NOT for answering routine agent questions.
+        // The human's response gets logged → behavior model learns → next time Brain handles it.
         log.debug("Brain escalating to human: {} (no behavior match, no API)", request.requestId());
         eventPublisher.publishEvent(new BrainEscalationEvent(
                 request.requestId(),

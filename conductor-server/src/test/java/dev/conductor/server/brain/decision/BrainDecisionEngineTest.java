@@ -54,7 +54,7 @@ class BrainDecisionEngineTest {
         BrainProperties props = new BrainProperties(true, null, null, 0.8, 10, logPath, 100000);
 
         behaviorLog = new BehaviorLog(objectMapper, props);
-        BehaviorModelBuilder modelBuilder = new BehaviorModelBuilder(behaviorLog);
+        BehaviorModelBuilder modelBuilder = new BehaviorModelBuilder(behaviorLog, null);
 
         ProjectRegistry projectRegistry = new ProjectRegistry();
         ClaudeMdScanner scanner = new ClaudeMdScanner();
@@ -84,7 +84,7 @@ class BrainDecisionEngineTest {
 
         BrainDecisionEngine disabledEngine = new BrainDecisionEngine(
                 disabledProps,
-                new BehaviorModelBuilder(new BehaviorLog(objectMapper, disabledProps)),
+                new BehaviorModelBuilder(new BehaviorLog(objectMapper, disabledProps), null),
                 new ContextIngestionService(new ProjectRegistry(), new ClaudeMdScanner()),
                 responder, queue, eventPublisher, null
         );

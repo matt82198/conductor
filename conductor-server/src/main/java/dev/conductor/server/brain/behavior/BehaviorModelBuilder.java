@@ -3,6 +3,7 @@ package dev.conductor.server.brain.behavior;
 import dev.conductor.server.humaninput.HumanInputRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -10,7 +11,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * Builds the {@link BehaviorModel} from raw behavior log entries.
+ * Builds the {@link BehaviorModel} from raw behavior log entries, integrating
+ * Brain feedback and providing bootstrap defaults for first-run scenarios.
  *
  * <p>The model is cached for 60 seconds to avoid expensive recomputation on every
  * incoming event. Pattern matching normalizes question text by taking the first
@@ -19,6 +21,17 @@ import java.util.stream.Collectors;
  * <p>Auto-approve detection: if the user has responded to the same normalized
  * question pattern 3+ times with similar answers (all responses start with the
  * same first word), the pattern is flagged for auto-approval.
+ *
+ * <p>When the behavior log is empty (first-run), a bootstrap model is returned
+ * with sensible defaults: routine "should I proceed?" questions are auto-approved,
+ * while destructive operations (deletions, force pushes, deployments) are
+ * always escalated.
+ *
+ * <p>Feedback integration teaches the Brain from user corrections:
+ * <ul>
+ *   <li>"BAD" feedback on a Brain response adds the question pattern to always-escalate</li>
+ *   <li>"GOOD" feedback on a Brain response adds the question pattern to auto-approve</li>
+ * </ul>
  */
 @Service
 public class BehaviorModelBuilder {
@@ -29,12 +42,18 @@ public class BehaviorModelBuilder {
     private static final long CACHE_TTL_MS = 60_000L;
 
     private final BehaviorLog behaviorLog;
+    private final BrainFeedbackStore feedbackStore; // nullable
 
     private volatile BehaviorModel cachedModel;
     private volatile long cachedAt;
 
-    public BehaviorModelBuilder(BehaviorLog behaviorLog) {
+    public BehaviorModelBuilder(
+            BehaviorLog behaviorLog,
+            @Autowired(required = false) BrainFeedbackStore feedbackStore) {
         this.behaviorLog = behaviorLog;
+        this.feedbackStore = feedbackStore;
+        log.info("BehaviorModelBuilder initialized (feedbackStore={})",
+                feedbackStore != null ? "present" : "absent");
     }
 
     /**
@@ -115,7 +134,9 @@ public class BehaviorModelBuilder {
         List<BehaviorEvent> events = behaviorLog.readAll();
 
         if (events.isEmpty()) {
-            return emptyModel();
+            BehaviorModel bootstrap = createBootstrapModel();
+            log.info("Using bootstrap behavior model (behavior log is empty)");
+            return applyFeedback(bootstrap);
         }
 
         // Separate events by type
@@ -163,7 +184,7 @@ public class BehaviorModelBuilder {
                 responsePatterns.size(), autoApprovePatterns.size(),
                 String.format("%.2f", overallApprovalRate));
 
-        return new BehaviorModel(
+        BehaviorModel model = new BehaviorModel(
                 Map.copyOf(responsePatterns),
                 overallApprovalRate,
                 Map.copyOf(approvalRateByTool),
@@ -173,12 +194,163 @@ public class BehaviorModelBuilder {
                 alwaysEscalatePatterns,
                 Instant.now()
         );
+
+        return applyFeedback(model);
     }
 
     private BehaviorModel emptyModel() {
         return new BehaviorModel(
                 Map.of(), 0.0, Map.of(), 0, 0.0, Set.of(), Set.of(), Instant.now()
         );
+    }
+
+    /**
+     * Clears the model cache, forcing a rebuild on next call to {@code build()}.
+     * Useful for testing.
+     */
+    void invalidateCache() {
+        cachedModel = null;
+        cachedAt = 0;
+    }
+
+    // ─── Bootstrap Model ─────────────────────────────────────────────
+
+    /**
+     * Creates a bootstrap model with sensible defaults for first-run scenarios.
+     *
+     * <p>Auto-approve patterns cover routine agent questions that almost always
+     * get "yes" or "proceed" answers. Always-escalate patterns cover destructive
+     * or irreversible operations that a human should always review.
+     *
+     * @return a model with sensible defaults
+     */
+    BehaviorModel createBootstrapModel() {
+        return new BehaviorModel(
+                Map.of(),  // no response patterns yet
+                0.8,       // assume 80% approval rate
+                Map.of(),  // no per-tool rates
+                15,        // average 15-word responses
+                0.1,       // low dismissal rate
+                Set.of(    // auto-approve these common patterns
+                        "should i proceed",
+                        "should i continue",
+                        "shall i go ahead",
+                        "which approach",
+                        "option a or option b",
+                        "should i create",
+                        "should i add",
+                        "should i use",
+                        "should i implement",
+                        "can i proceed"
+                ),
+                Set.of(    // always escalate these
+                        "delete",
+                        "remove",
+                        "git push",
+                        "force push",
+                        "drop table",
+                        "rm -rf",
+                        "deploy",
+                        "publish",
+                        "release",
+                        "production"
+                ),
+                Instant.now()
+        );
+    }
+
+    // ─── Feedback Integration ────────────────────────────────────────
+
+    /**
+     * Applies accumulated feedback to the model by modifying the auto-approve
+     * and always-escalate pattern sets.
+     *
+     * <ul>
+     *   <li>"BAD" feedback: the Brain's response was wrong. Add the request pattern
+     *       to always-escalate so it doesn't auto-respond next time.</li>
+     *   <li>"GOOD" feedback: the Brain got it right. Add the request pattern to
+     *       auto-approve to reinforce the behavior.</li>
+     * </ul>
+     *
+     * @param model the base model to enhance
+     * @return a new model with feedback-modified pattern sets, or the original if
+     *         no feedback store is available or no feedback changes anything
+     */
+    private BehaviorModel applyFeedback(BehaviorModel model) {
+        if (feedbackStore == null) {
+            return model;
+        }
+
+        List<BrainFeedback> allFeedback = feedbackStore.readAll();
+        if (allFeedback.isEmpty()) {
+            return model;
+        }
+
+        Set<String> enhancedAutoApprove = new HashSet<>(model.autoApprovePatterns());
+        Set<String> enhancedAlwaysEscalate = new HashSet<>(model.alwaysEscalatePatterns());
+
+        for (BrainFeedback feedback : allFeedback) {
+            if (feedback.brainResponse() == null || feedback.brainResponse().isBlank()) {
+                continue;
+            }
+
+            // Normalize the Brain's response to use as a pattern key
+            String pattern = normalizeForFeedback(feedback.brainResponse());
+            if (pattern.isEmpty()) {
+                continue;
+            }
+
+            switch (feedback.rating()) {
+                case "BAD" -> {
+                    // Brain was wrong -- escalate this pattern next time
+                    enhancedAlwaysEscalate.add(pattern);
+                    enhancedAutoApprove.remove(pattern);
+                }
+                case "GOOD" -> {
+                    // Brain was right -- reinforce auto-approve
+                    enhancedAutoApprove.add(pattern);
+                    enhancedAlwaysEscalate.remove(pattern);
+                }
+                // NEUTRAL feedback: no action
+                default -> { }
+            }
+        }
+
+        if (enhancedAutoApprove.equals(model.autoApprovePatterns())
+                && enhancedAlwaysEscalate.equals(model.alwaysEscalatePatterns())) {
+            return model; // No changes from feedback
+        }
+
+        log.debug("Applied feedback: autoApprove={} (+{}), alwaysEscalate={} (+{})",
+                enhancedAutoApprove.size(),
+                enhancedAutoApprove.size() - model.autoApprovePatterns().size(),
+                enhancedAlwaysEscalate.size(),
+                enhancedAlwaysEscalate.size() - model.alwaysEscalatePatterns().size());
+
+        return new BehaviorModel(
+                model.responsePatterns(),
+                model.overallApprovalRate(),
+                model.approvalRateByTool(),
+                model.averageResponseWordCount(),
+                model.dismissalRate(),
+                Set.copyOf(enhancedAutoApprove),
+                Set.copyOf(enhancedAlwaysEscalate),
+                Instant.now()
+        );
+    }
+
+    /**
+     * Normalizes feedback text to a pattern key: lowercase, trimmed, first 50 chars.
+     * Matches the pattern key format used by {@link #normalizeKey(String)}.
+     */
+    private static String normalizeForFeedback(String text) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+        String normalized = text.trim().toLowerCase(Locale.ROOT);
+        return normalized.length() > PATTERN_KEY_LENGTH
+                ? normalized.substring(0, PATTERN_KEY_LENGTH)
+                : normalized;
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────

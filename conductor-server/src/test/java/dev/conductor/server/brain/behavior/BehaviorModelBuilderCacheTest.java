@@ -43,7 +43,7 @@ class BehaviorModelBuilderCacheTest {
         String logPath = tempDir.resolve("behavior-log.jsonl").toString();
         BrainProperties props = new BrainProperties(false, null, null, 0.8, 10, logPath, 100000);
         behaviorLog = new BehaviorLog(objectMapper, props);
-        builder = new BehaviorModelBuilder(behaviorLog);
+        builder = new BehaviorModelBuilder(behaviorLog, null);
     }
 
     // ─── Caching ─────────────────────────────────────────────────────

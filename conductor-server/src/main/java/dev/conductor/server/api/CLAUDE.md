@@ -3,7 +3,7 @@
 ## Responsibility
 HTTP and WebSocket surface for the conductor-ui and future clients (CLI, IntelliJ plugin).
 
-## Status: Phase 0-3 Endpoints Built
+## Status: Phase 0-3 Endpoints Built + Agent Templates
 
 ## Contracts
 
@@ -19,6 +19,11 @@ HTTP and WebSocket surface for the conductor-ui and future clients (CLI, Intelli
 - `ProjectRegistry` (from project/) — for project CRUD
 - `ProjectScanner` (from project/) — for directory scanning
 - `DndManager` (from notification/) — for Do Not Disturb toggle
+- `ProjectKnowledgeExtractor` (from brain/context/) — for project analysis
+- `ProjectKnowledgeStore` (from brain/context/) — for knowledge persistence
+- `AgentTemplateRegistry` (from agent/) — for template CRUD and usage tracking
+- `AgentOutputStore` (from agent/) — for full agent output history
+- `BrainFeedbackStore` (from brain/behavior/) — for Brain decision feedback
 
 ### Provides
 - REST endpoints under `/api/`
@@ -45,6 +50,29 @@ HTTP and WebSocket surface for the conductor-ui and future clients (CLI, Intelli
 | DELETE | `/api/projects/{id}` | — | 200/404 | 3 |
 | GET | `/api/notifications/dnd` | — | `{enabled: boolean}` | 1 |
 | POST | `/api/notifications/dnd` | `{enabled: boolean}` | `{enabled: boolean}` | 1 |
+| POST | `/api/brain/analyze/{projectId}` | — | ProjectKnowledge (201) / 404 / 503 | 4 |
+| GET | `/api/brain/knowledge` | — | List\<ProjectKnowledge\> | 4 |
+| GET | `/api/brain/knowledge/{projectId}` | — | ProjectKnowledge / 404 / 503 | 4 |
+| GET | `/api/templates` | — | List\<AgentTemplate\> | — |
+| GET | `/api/templates/search?q=query` | — | List\<AgentTemplate\> | — |
+| GET | `/api/templates/{id}` | — | AgentTemplate / 404 | — |
+| POST | `/api/templates` | `{name, description, role, defaultPrompt, tags}` | AgentTemplate (201) / 400 | — |
+| PUT | `/api/templates/{id}` | `{name?, description?, role?, defaultPrompt?, tags?}` | AgentTemplate / 404 | — |
+| DELETE | `/api/templates/{id}` | — | 200/404 | — |
+| POST | `/api/templates/{id}/use` | `{projectPath, promptOverride?}` | `{agent, template}` (201) / 404 / 429 / 500 | — |
+| GET | `/api/agents/{id}/output` | `?offset=0&limit=100` | List\<OutputEntry\> / 404 | MVP |
+| GET | `/api/agents/{id}/output/count` | — | `{count: int}` / 404 | MVP |
+| GET | `/api/brain/status` | — | `{enabled, model, confidenceThreshold, behaviorLogSize, projectsIndexed}` | 4 |
+| GET | `/api/brain/behavior` | — | BehaviorModel | 4 |
+| GET | `/api/brain/context` | — | ContextIndex | 4 |
+| POST | `/api/brain/context/refresh` | — | ContextIndex | 4 |
+| POST | `/api/brain/feedback` | `{requestId, decision, brainResponse, rating, correction}` | `{status, feedbackId}` | MVP |
+| GET | `/api/brain/feedback` | `?limit=50` | List\<BrainFeedback\> | MVP |
+| POST | `/api/brain/command` | `{text: "command"}` | `{intent, result}` | 4 |
+| POST | `/api/brain/tasks` | `{prompt, projectPath}` | DecompositionPlan (201) | 4C |
+| GET | `/api/brain/tasks` | — | Collection\<DecompositionPlan\> | 4C |
+| GET | `/api/brain/tasks/{planId}` | — | DecompositionPlan / 404 | 4C |
+| DELETE | `/api/brain/tasks/{planId}` | — | DecompositionPlan / 404 | 4C |
 
 ## WebSocket
 - `/ws/events` — Raw agent stream-json events: `{agentId, eventType, event}`
@@ -55,6 +83,7 @@ HTTP and WebSocket surface for the conductor-ui and future clients (CLI, Intelli
 ## Files
 | File | Purpose |
 |------|---------|
+| `BrainController.java` | @RestController — unified Brain endpoints: status, behavior, context, knowledge, feedback, command, tasks |
 | `AgentController.java` | @RestController — agent CRUD + spawn + message |
 | `AgentMuteController.java` | @RestController — per-agent mute/unmute endpoints |
 | `HumanInputController.java` | @RestController — pending requests, respond, dismiss, count |
@@ -62,6 +91,8 @@ HTTP and WebSocket surface for the conductor-ui and future clients (CLI, Intelli
 | `NotificationSettingsController.java` | @RestController — DND enable/disable |
 | `EventStreamWebSocketHandler.java` | WebSocket handler — broadcasts AgentStreamEvents at /ws/events |
 | `AdditionalEventWebSocketHandler.java` | WebSocket handler — broadcasts HumanInputNeeded + QueuedMessage events at /ws/notifications |
+| `AgentTemplateController.java` | @RestController — template CRUD, search, and one-click spawn from template |
+| `AgentOutputController.java` | @RestController — paginated agent output history retrieval |
 
 ## Test Files
 | File | Coverage |
@@ -78,3 +109,5 @@ HTTP and WebSocket surface for the conductor-ui and future clients (CLI, Intelli
 - CORS is wide open in Phase 0 — lock down in production
 - On JDK 25+, Mockito cannot inline-mock concrete classes — use real instances or test stubs
 - AgentMuteController mounts under `/api/agents` alongside AgentController — Spring merges mappings
+- AgentOutputController also mounts under `/api/agents` — same merge pattern
+- BrainController is the single unified controller for all `/api/brain` endpoints (status, behavior, context, knowledge, feedback, command, tasks)

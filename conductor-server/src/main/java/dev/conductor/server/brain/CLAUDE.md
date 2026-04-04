@@ -3,7 +3,7 @@
 ## Responsibility
 Leader agent that acts as a product owner between the human and child agents. Reads project context, learns user behavior patterns, auto-responds to routine agent questions, and escalates important decisions to the human. Never writes code — only orchestrates.
 
-## Status: Phase 4A + 4C Complete
+## Status: Phase 4A + 4C + Knowledge Extractor Complete + Feedback Loop + Bootstrap
 
 ## Contracts
 
@@ -24,10 +24,27 @@ Leader agent that acts as a product owner between the human and child agents. Re
 - `BehaviorModelBuilder.build()` → BehaviorModel — aggregated user behavior patterns
 - `ContextIngestionService.buildIndex()` → ContextIndex — indexed project context
 - `BrainApiClient.evaluate()` → Optional<BrainDecision> — Claude API decision (Phase 4B)
+- `TaskDecomposer.decompose(prompt, projectPath, context)` → DecompositionPlan — prompt to subtask DAG
+- `TaskExecutor.execute(plan)` → DecompositionPlan — runs plan in waves, spawns agents
+- `TaskExecutor.getPlan(planId)` → Optional<DecompositionPlan> — plan lookup
+- `TaskExecutor.getActivePlans()` → Collection<DecompositionPlan> — all tracked plans
+- `TaskExecutor.cancel(planId)` → Optional<DecompositionPlan> — cancel running plan
+- `InterAgentBridge.shareContext(plan, completedTask)` — shares output between agents
+- `ProjectKnowledgeExtractor.analyze(path, id, name)` → ProjectKnowledge — deep project analysis via Claude API
+- `ProjectKnowledgeStore.save(knowledge)` — persist extracted knowledge as JSON
+- `ProjectKnowledgeStore.load(projectId)` → Optional<ProjectKnowledge> — load by project ID
+- `ProjectKnowledgeStore.loadAll()` → List<ProjectKnowledge> — all stored knowledge
+- `ProjectKnowledgeStore.renderForPrompt(maxChars)` → String — knowledge formatted for prompts
+- `KnowledgeAwareContextRenderer.renderForPrompt(index, path, maxChars)` — context + knowledge combined
+- `BrainFeedbackStore.append(feedback)` → void — record user feedback on Brain decisions
+- `BrainFeedbackStore.readAll()` → List<BrainFeedback> — all feedback entries
+- `BrainFeedbackStore.readRecent(count)` → List<BrainFeedback> — last N entries
+- `BehaviorModelBuilder.build()` — includes bootstrap defaults (empty log) and feedback integration
 
 ### Events Published
 - `BrainResponseEvent(requestId, agentId, response, confidence, reasoning)` — Brain auto-responded
 - `BrainEscalationEvent(requestId, agentId, reason, recommendation, confidence)` — Brain deferred to human
+- `TaskProgressEvent(planId, completed, total, currentPhase)` — subtask state changed in a plan
 
 ## Sub-packages
 | Package | Purpose |
@@ -47,14 +64,20 @@ Leader agent that acts as a product owner between the human and child agents. Re
 | `behavior/BehaviorLog.java` | @Service — append-only JSONL file manager |
 | `behavior/BehaviorLogger.java` | @Service — high-level logging API for controllers |
 | `behavior/BehaviorModel.java` | Record — aggregated behavior patterns |
-| `behavior/BehaviorModelBuilder.java` | @Service — builds model from log, caches 60s |
+| `behavior/BehaviorModelBuilder.java` | @Service — builds model from log, caches 60s, bootstrap defaults, feedback integration |
 | `behavior/BehaviorMatch.java` | Record — pattern match result with confidence |
+| `behavior/BrainFeedback.java` | Record — user feedback on a Brain decision (GOOD/BAD/NEUTRAL) |
+| `behavior/BrainFeedbackStore.java` | @Service — append-only JSONL at ~/.conductor/brain-feedback.jsonl |
 | `context/ContextIndex.java` | Record — full context index |
 | `context/ProjectContext.java` | Record — per-project context |
 | `context/DomainClaudeMd.java` | Record — single CLAUDE.md content |
 | `context/GlobalContext.java` | Record — global ~/.claude context |
 | `context/ClaudeMdScanner.java` | @Service — recursive CLAUDE.md discovery |
 | `context/ContextIngestionService.java` | @Service — builds and maintains context index |
+| `context/ProjectKnowledge.java` | Record — extracted project knowledge (tech stack, patterns, key files) |
+| `context/ProjectKnowledgeStore.java` | @Service — persists knowledge as JSON in ~/.conductor/project-knowledge/ |
+| `context/ProjectKnowledgeExtractor.java` | @Service — analyzes projects via Claude API to extract patterns |
+| `context/KnowledgeAwareContextRenderer.java` | @Service — wraps ContextIngestionService with cross-project knowledge |
 | `decision/BrainDecision.java` | Record — decision result (respond/escalate) |
 | `decision/BrainDecisionEngine.java` | @Service — core event listener + decision logic |
 | `decision/BrainResponseEvent.java` | Spring event — Brain auto-responded |
@@ -84,6 +107,10 @@ Leader agent that acts as a product owner between the human and child agents. Re
 | `DependencyResolverTest.java` | 14 tests: waves, cycles, diamonds, linear chains, unknown deps |
 | `TaskDecomposerTest.java` | 20 tests: template decomposition, role assignment, DAG validity, error cases |
 | `TaskProgressEventTest.java` | 3 tests: timestamp defaults, field access |
+| `ProjectKnowledgeStoreTest.java` | 12 tests: save/load roundtrip, multi-project, delete, render, maxChars, overwrite |
+| `ProjectKnowledgeExtractorTest.java` | 20 tests: file discovery, build file reading, source samples, fallback, parsing |
+| `BrainFeedbackStoreTest.java` | 11 tests: append/readAll roundtrip, readRecent, size, null safety, defaults |
+| `BehaviorModelBuilderBootstrapTest.java` | 10 tests: bootstrap model, auto-approve/escalate patterns, non-empty log, feedback integration |
 
 ## Key Design
 - Brain listens with `@Order(HIGHEST_PRECEDENCE)` to handle events before notification routing
@@ -100,3 +127,10 @@ Leader agent that acts as a product owner between the human and child agents. Re
 - ClaudeMdScanner must skip .git/, node_modules/, target/, dist/
 - ContextIngestionService reads ~/.claude/ paths — these are Windows paths on this system
 - BrainApiClient is @ConditionalOnProperty — won't instantiate without API key
+- ProjectKnowledgeExtractor gracefully falls back to build-file-only detection when no API key is set
+- ProjectKnowledgeStore writes to ~/.conductor/project-knowledge/ — creates directory if needed
+- KnowledgeAwareContextRenderer allocates 75% budget to base context, 25% to knowledge
+- BehaviorModelBuilder handles bootstrap (empty log) and feedback integration directly — no subclass needed
+- Bootstrap model is returned when behavior log is empty (first-run scenario)
+- BrainFeedbackStore writes to ~/.conductor/brain-feedback.jsonl — creates directory if needed
+- BAD feedback adds to alwaysEscalate, GOOD feedback adds to autoApprove, overrides are applied in order
