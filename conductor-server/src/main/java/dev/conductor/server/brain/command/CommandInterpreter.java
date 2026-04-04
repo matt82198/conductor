@@ -160,16 +160,18 @@ public class CommandInterpreter {
             return buildDecomposeIntent(input);
         }
 
+        // ANALYZE must be checked before REGISTER because "analyze project at /path"
+        // should match ANALYZE, not REGISTER (which also matches "add/open + project")
+        if (ANALYZE_PATTERN.matcher(input).find()) {
+            return buildAnalyzeIntent(input);
+        }
+
         if (REGISTER_PATTERN.matcher(input).find() || REGISTER_PATH_PATTERN.matcher(input).find()) {
             return buildRegisterIntent(input);
         }
 
         if (SCAN_PATTERN.matcher(input).find()) {
             return buildScanIntent(input);
-        }
-
-        if (ANALYZE_PATTERN.matcher(input).find()) {
-            return buildAnalyzeIntent(input);
         }
 
         if (STATUS_PATTERN.matcher(input).find()) {

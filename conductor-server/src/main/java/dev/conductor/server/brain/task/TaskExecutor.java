@@ -8,9 +8,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -49,6 +51,12 @@ public class TaskExecutor {
 
     /** Maps agentId -> (planId, subtaskId) for event correlation. */
     private final ConcurrentHashMap<UUID, PlanSubtaskRef> agentToSubtask = new ConcurrentHashMap<>();
+
+    /** Tracks when plans reached a terminal state, for delayed cleanup. */
+    private final ConcurrentHashMap<String, Instant> terminalTimestamps = new ConcurrentHashMap<>();
+
+    /** How long to keep completed/failed/cancelled plans before cleanup (5 minutes). */
+    private static final long CLEANUP_RETENTION_MS = 5 * 60 * 1000L;
 
     public TaskExecutor(
             ClaudeProcessManager processManager,
@@ -146,6 +154,7 @@ public class TaskExecutor {
                         ? DecompositionPlan.STATUS_FAILED
                         : DecompositionPlan.STATUS_COMPLETED;
                 updatedPlan = updatedPlan.withStatus(terminalStatus);
+                terminalTimestamps.put(ref.planId(), Instant.now());
                 log.info("Plan {} -> {} (completed={}, failed={})",
                         ref.planId(), terminalStatus, updatedPlan.completedCount(), updatedPlan.failedCount());
             }
@@ -347,6 +356,7 @@ public class TaskExecutor {
         );
 
         activePlans.put(planId, cancelled);
+        terminalTimestamps.put(planId, Instant.now());
 
         // Publish final progress event
         eventPublisher.publishEvent(new TaskProgressEvent(
@@ -383,6 +393,40 @@ public class TaskExecutor {
             return "complete";
         } catch (Exception e) {
             return "unknown";
+        }
+    }
+
+    /**
+     * Periodically removes terminal plans (COMPLETED, FAILED, CANCELLED)
+     * and their associated agent mappings after the retention period.
+     * Runs every 60 seconds.
+     */
+    @Scheduled(fixedDelay = 60_000L)
+    void cleanupTerminalPlans() {
+        if (terminalTimestamps.isEmpty()) return;
+
+        long now = System.currentTimeMillis();
+        List<String> toRemove = new ArrayList<>();
+
+        terminalTimestamps.forEach((planId, terminatedAt) -> {
+            if (now - terminatedAt.toEpochMilli() > CLEANUP_RETENTION_MS) {
+                toRemove.add(planId);
+            }
+        });
+
+        for (String planId : toRemove) {
+            DecompositionPlan plan = activePlans.remove(planId);
+            terminalTimestamps.remove(planId);
+            if (plan != null) {
+                // Clean up agent->subtask mappings for this plan
+                for (Subtask subtask : plan.subtasks()) {
+                    if (subtask.agentId() != null) {
+                        agentToSubtask.remove(subtask.agentId());
+                    }
+                }
+                log.info("Cleaned up terminal plan {} (status={})",
+                        planId, plan.status());
+            }
         }
     }
 

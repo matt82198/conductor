@@ -1,6 +1,7 @@
 package dev.conductor.server.brain.decision;
 
 import dev.conductor.server.brain.BrainProperties;
+import dev.conductor.server.brain.BrainStateManager;
 import dev.conductor.server.brain.api.BrainApiClient;
 import dev.conductor.server.brain.behavior.BehaviorMatch;
 import dev.conductor.server.brain.behavior.BehaviorModel;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Core decision engine for the Conductor Brain (Phase 4A).
@@ -46,6 +48,7 @@ public class BrainDecisionEngine {
     private static final Logger log = LoggerFactory.getLogger(BrainDecisionEngine.class);
 
     private final BrainProperties brainProperties;
+    private final BrainStateManager brainStateManager;
     private final BehaviorModelBuilder behaviorModelBuilder;
     private final ContextIngestionService contextIngestionService;
     private final HumanInputResponder humanInputResponder;
@@ -53,8 +56,13 @@ public class BrainDecisionEngine {
     private final ApplicationEventPublisher eventPublisher;
     private final BrainApiClient brainApiClient; // nullable — only present when API key is set
 
+    /** Rate limiting: tracks auto-responses per minute window. */
+    private final AtomicInteger autoResponseCount = new AtomicInteger(0);
+    private volatile long lastResetTime = System.currentTimeMillis();
+
     public BrainDecisionEngine(
             BrainProperties brainProperties,
+            BrainStateManager brainStateManager,
             BehaviorModelBuilder behaviorModelBuilder,
             ContextIngestionService contextIngestionService,
             HumanInputResponder humanInputResponder,
@@ -63,6 +71,7 @@ public class BrainDecisionEngine {
             @Autowired(required = false) BrainApiClient brainApiClient
     ) {
         this.brainProperties = brainProperties;
+        this.brainStateManager = brainStateManager;
         this.behaviorModelBuilder = behaviorModelBuilder;
         this.contextIngestionService = contextIngestionService;
         this.humanInputResponder = humanInputResponder;
@@ -71,7 +80,7 @@ public class BrainDecisionEngine {
         this.brainApiClient = brainApiClient;
 
         log.info("Brain decision engine initialized (enabled={}, confidenceThreshold={}, apiClient={})",
-                brainProperties.enabled(), brainProperties.confidenceThreshold(),
+                brainStateManager.isEnabled(), brainProperties.confidenceThreshold(),
                 brainApiClient != null ? "present" : "absent");
     }
 
@@ -86,7 +95,7 @@ public class BrainDecisionEngine {
     @EventListener
     @Order(Ordered.HIGHEST_PRECEDENCE)
     public void onHumanInputNeeded(HumanInputNeededEvent event) {
-        if (!brainProperties.enabled()) {
+        if (!brainStateManager.isEnabled()) {
             return;
         }
 
@@ -99,9 +108,29 @@ public class BrainDecisionEngine {
         BehaviorMatch match = behaviorModelBuilder.findMatch(request, model);
 
         if (match != null && match.confidence() >= brainProperties.confidenceThreshold()) {
+            // Rate limit check: reset counter if more than 60s have elapsed
+            long now = System.currentTimeMillis();
+            if (now - lastResetTime > 60_000L) {
+                autoResponseCount.set(0);
+                lastResetTime = now;
+            }
+            if (autoResponseCount.get() >= brainProperties.maxAutoResponsesPerMinute()) {
+                log.warn("Brain rate limit exceeded ({}/min) — escalating request {} to human",
+                        brainProperties.maxAutoResponsesPerMinute(), request.requestId());
+                eventPublisher.publishEvent(new BrainEscalationEvent(
+                        request.requestId(),
+                        request.agentId().toString(),
+                        "Rate limit exceeded (" + brainProperties.maxAutoResponsesPerMinute() + "/min)",
+                        match.suggestedResponse(),
+                        match.confidence(),
+                        Instant.now()));
+                return;
+            }
+
             // Auto-respond from behavior model
             try {
                 humanInputResponder.respond(request.requestId(), match.suggestedResponse());
+                autoResponseCount.incrementAndGet();
                 eventPublisher.publishEvent(new BrainResponseEvent(
                         request.requestId(),
                         request.agentId().toString(),
@@ -142,7 +171,7 @@ public class BrainDecisionEngine {
      */
     @EventListener
     public void onAgentStreamEvent(ClaudeProcessManager.AgentStreamEvent event) {
-        if (!brainProperties.enabled()) {
+        if (!brainStateManager.isEnabled()) {
             return;
         }
 

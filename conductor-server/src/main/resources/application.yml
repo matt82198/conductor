@@ -12,7 +12,7 @@ conductor:
   agents:
     max-concurrent: 200
   brain:
-    enabled: false
+    enabled: true
     api-key: ${ANTHROPIC_API_KEY:}
     model: claude-sonnet-4-6
     confidence-threshold: 0.8

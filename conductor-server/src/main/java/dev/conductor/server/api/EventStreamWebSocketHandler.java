@@ -3,6 +3,7 @@ package dev.conductor.server.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.conductor.server.brain.decision.BrainEscalationEvent;
 import dev.conductor.server.brain.decision.BrainResponseEvent;
+import dev.conductor.server.brain.task.TaskProgressEvent;
 import dev.conductor.server.humaninput.HumanInputNeededEvent;
 import dev.conductor.server.process.ClaudeProcessManager.AgentStreamEvent;
 import dev.conductor.server.queue.QueuedMessageEvent;
@@ -210,6 +211,29 @@ public class EventStreamWebSocketHandler extends TextWebSocketHandler {
             broadcast(objectMapper.writeValueAsString(payload));
         } catch (Exception e) {
             log.error("Error broadcasting brain escalation event: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Broadcasts task progress events to all connected clients.
+     *
+     * <p>Fired when a subtask changes state within an executing decomposition
+     * plan. This consolidates task progress onto the {@code /ws/events} endpoint
+     * so the UI only needs a single WebSocket connection.
+     */
+    @EventListener
+    public void onTaskProgress(TaskProgressEvent event) {
+        if (sessions.isEmpty()) return;
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "task_progress");
+            payload.put("planId", event.planId());
+            payload.put("completed", event.completed());
+            payload.put("total", event.total());
+            payload.put("currentPhase", event.currentPhase());
+            broadcast(objectMapper.writeValueAsString(payload));
+        } catch (Exception e) {
+            log.error("Error broadcasting task progress event: {}", e.getMessage(), e);
         }
     }
 

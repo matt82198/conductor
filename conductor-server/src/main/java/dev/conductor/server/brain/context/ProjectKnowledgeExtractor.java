@@ -33,6 +33,9 @@ public class ProjectKnowledgeExtractor {
     private static final int MAX_CHARS_PER_FILE = 3000;
     private static final int MAX_TOTAL_SOURCE_CHARS = 30000;
 
+    /** Hard cap on total characters sent to the Claude API for analysis. */
+    private static final int MAX_API_PROMPT_CHARS = 50_000;
+
     private static final Set<String> SKIP_DIRECTORIES = Set.of(
             ".git", "node_modules", "target", "dist", "build", ".idea", ".gradle", ".mvn",
             "__pycache__", ".venv", "venv", ".next", "out"
@@ -321,7 +324,16 @@ public class ProjectKnowledgeExtractor {
                 - Anything reusable across projects
                 """);
 
-        return sb.toString();
+        String result = sb.toString();
+
+        // Hard cap on total chars sent to the API
+        if (result.length() > MAX_API_PROMPT_CHARS) {
+            log.warn("Analysis prompt for {} exceeds cap ({} chars > {} max) — truncating",
+                    projectName, result.length(), MAX_API_PROMPT_CHARS);
+            result = result.substring(0, MAX_API_PROMPT_CHARS);
+        }
+
+        return result;
     }
 
     /**

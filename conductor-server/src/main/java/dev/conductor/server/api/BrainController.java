@@ -1,6 +1,7 @@
 package dev.conductor.server.api;
 
 import dev.conductor.server.brain.BrainProperties;
+import dev.conductor.server.brain.BrainStateManager;
 import dev.conductor.server.brain.behavior.BehaviorLog;
 import dev.conductor.server.brain.behavior.BehaviorModelBuilder;
 import dev.conductor.server.brain.behavior.BrainFeedback;
@@ -42,6 +43,7 @@ public class BrainController {
     private static final Logger log = LoggerFactory.getLogger(BrainController.class);
 
     private final BrainProperties brainProperties;
+    private final BrainStateManager brainStateManager;
     private final BehaviorModelBuilder behaviorModelBuilder;
     private final BehaviorLog behaviorLog;
     private final ContextIngestionService contextIngestionService;
@@ -56,6 +58,7 @@ public class BrainController {
 
     public BrainController(
             BrainProperties brainProperties,
+            BrainStateManager brainStateManager,
             BehaviorModelBuilder behaviorModelBuilder,
             BehaviorLog behaviorLog,
             ContextIngestionService contextIngestionService,
@@ -69,6 +72,7 @@ public class BrainController {
             @Autowired(required = false) ProjectKnowledgeStore projectKnowledgeStore
     ) {
         this.brainProperties = brainProperties;
+        this.brainStateManager = brainStateManager;
         this.behaviorModelBuilder = behaviorModelBuilder;
         this.behaviorLog = behaviorLog;
         this.contextIngestionService = contextIngestionService;
@@ -104,12 +108,34 @@ public class BrainController {
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> getStatus() {
         Map<String, Object> status = new HashMap<>();
-        status.put("enabled", brainProperties.enabled());
+        status.put("enabled", brainStateManager.isEnabled());
         status.put("model", brainProperties.model());
         status.put("confidenceThreshold", brainProperties.confidenceThreshold());
         status.put("behaviorLogSize", behaviorLog.size());
         status.put("projectsIndexed", contextIngestionService.buildIndex().projects().size());
         return ResponseEntity.ok(status);
+    }
+
+    /**
+     * Toggles the Brain enabled/disabled state at runtime.
+     *
+     * <p>Request body:
+     * <pre>
+     * { "enabled": true }
+     * </pre>
+     *
+     * @param body map containing the "enabled" boolean
+     * @return the new enabled state
+     */
+    @PostMapping("/enable")
+    public ResponseEntity<Map<String, Object>> setBrainEnabled(@RequestBody Map<String, Boolean> body) {
+        Boolean enabled = body.get("enabled");
+        if (enabled == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Missing 'enabled' field"));
+        }
+        brainStateManager.setEnabled(enabled);
+        log.info("Brain enabled state set to {} via REST", enabled);
+        return ResponseEntity.ok(Map.of("enabled", brainStateManager.isEnabled()));
     }
 
     // ─── Behavior ──────────────────────────────────────────────────────

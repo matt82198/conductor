@@ -106,10 +106,14 @@ public class TaskDecomposer {
                     .defaultHeader("Content-Type", "application/json")
                     .defaultHeader("anthropic-version", "2023-06-01")
                     .build();
-            log.info("TaskDecomposer initialized with Claude API — model: {}", brainProperties.model());
+            log.info("TaskDecomposer initialized with Claude API — model: {}, apiKeyLength: {}",
+                    brainProperties.model(), brainProperties.apiKey().length());
         } else {
             this.restClient = null;
-            log.info("TaskDecomposer initialized in template-only mode (no API key)");
+            log.info("TaskDecomposer initialized in template-only mode (apiKey null={}, blank={}, objectMapper null={})",
+                    brainProperties == null || brainProperties.apiKey() == null,
+                    brainProperties != null && brainProperties.apiKey() != null && brainProperties.apiKey().isBlank(),
+                    objectMapper == null);
         }
     }
 

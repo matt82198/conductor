@@ -1,11 +1,13 @@
 package dev.conductor.server.agent;
 
+import dev.conductor.common.AgentState;
 import dev.conductor.common.StreamJsonEvent;
 import dev.conductor.common.StreamJsonEvent.*;
 import dev.conductor.server.process.ClaudeProcessManager.AgentStreamEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -34,7 +36,58 @@ public class AgentOutputStore {
     /** Maximum number of output entries stored per agent. */
     static final int MAX_ENTRIES_PER_AGENT = 500;
 
+    /** How long to keep output for terminal agents before cleanup (30 minutes). */
+    private static final long TERMINAL_RETENTION_MS = 30 * 60 * 1000L;
+
     private final ConcurrentHashMap<UUID, List<OutputEntry>> outputs = new ConcurrentHashMap<>();
+
+    /** Tracks when agents entered a terminal state, for delayed cleanup. */
+    private final ConcurrentHashMap<UUID, Instant> terminalAgentTimestamps = new ConcurrentHashMap<>();
+
+    private final AgentRegistry agentRegistry;
+
+    public AgentOutputStore(AgentRegistry agentRegistry) {
+        this.agentRegistry = agentRegistry;
+    }
+
+    /**
+     * Periodically cleans up output for agents that have been in a terminal
+     * state (COMPLETED/FAILED) for more than 30 minutes. Runs every 60 seconds.
+     */
+    @Scheduled(fixedDelay = 60_000L)
+    void cleanupTerminalAgentOutput() {
+        // First, detect newly terminal agents
+        for (UUID agentId : outputs.keySet()) {
+            if (terminalAgentTimestamps.containsKey(agentId)) continue;
+
+            agentRegistry.get(agentId).ifPresent(agent -> {
+                AgentState state = agent.state();
+                if (state == AgentState.COMPLETED || state == AgentState.FAILED) {
+                    terminalAgentTimestamps.put(agentId, Instant.now());
+                }
+            });
+        }
+
+        // Then, clean up agents past retention
+        long now = System.currentTimeMillis();
+        List<UUID> toRemove = new ArrayList<>();
+
+        terminalAgentTimestamps.forEach((agentId, terminatedAt) -> {
+            if (now - terminatedAt.toEpochMilli() > TERMINAL_RETENTION_MS) {
+                toRemove.add(agentId);
+            }
+        });
+
+        for (UUID agentId : toRemove) {
+            outputs.remove(agentId);
+            terminalAgentTimestamps.remove(agentId);
+            log.debug("Cleaned up output for terminal agent {}", agentId);
+        }
+
+        if (!toRemove.isEmpty()) {
+            log.info("Cleaned up output for {} terminal agent(s)", toRemove.size());
+        }
+    }
 
     /**
      * Immutable snapshot of a single output entry from an agent.

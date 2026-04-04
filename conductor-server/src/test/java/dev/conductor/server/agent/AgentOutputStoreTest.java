@@ -23,7 +23,7 @@ class AgentOutputStoreTest {
 
     @BeforeEach
     void setUp() {
-        store = new AgentOutputStore();
+        store = new AgentOutputStore(new AgentRegistry());
     }
 
     // ─── Basic storage and retrieval ─────────────────────────────────

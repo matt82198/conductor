@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import dev.conductor.server.brain.BrainProperties;
+import dev.conductor.server.brain.BrainStateManager;
 import dev.conductor.server.brain.behavior.BehaviorLog;
 import dev.conductor.server.brain.behavior.BehaviorModelBuilder;
 import dev.conductor.server.brain.context.ContextIngestionService;
@@ -65,7 +66,7 @@ class BrainDecisionEngineTest {
         eventPublisher = new TestEventPublisher();
 
         engine = new BrainDecisionEngine(
-                props, modelBuilder, contextService,
+                props, new BrainStateManager(props), modelBuilder, contextService,
                 responder, queue, eventPublisher, null
         );
     }
@@ -84,6 +85,7 @@ class BrainDecisionEngineTest {
 
         BrainDecisionEngine disabledEngine = new BrainDecisionEngine(
                 disabledProps,
+                new BrainStateManager(disabledProps),
                 new BehaviorModelBuilder(new BehaviorLog(objectMapper, disabledProps), null),
                 new ContextIngestionService(new ProjectRegistry(), new ClaudeMdScanner()),
                 responder, queue, eventPublisher, null
