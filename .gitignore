@@ -42,6 +42,12 @@ package-lock.json
 # Spike captures (may contain session tokens)
 spikes/spike3-stream-json/capture-*.jsonl
 
+# Claude Code (may contain API keys in permission strings)
+.claude/settings.local.json
+
+# Conductor data
+.conductor/
+
 # Env
 .env
 .env.*

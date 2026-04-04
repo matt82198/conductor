@@ -32,7 +32,7 @@ class ContextIngestionServiceRenderTest {
     void setUp() {
         projectRegistry = new ProjectRegistry();
         scanner = new ClaudeMdScanner();
-        service = new ContextIngestionService(projectRegistry, scanner);
+        service = new ContextIngestionService(projectRegistry, scanner, null);
     }
 
     // ─── Prompt rendering edge cases ─────────────────────────────────

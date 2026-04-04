@@ -12,6 +12,7 @@ import dev.conductor.server.brain.command.CommandInterpreter;
 import dev.conductor.server.brain.command.CommandResult;
 import dev.conductor.server.brain.context.ContextIndex;
 import dev.conductor.server.brain.context.ContextIngestionService;
+import dev.conductor.server.brain.context.PersonalKnowledgeScanner;
 import dev.conductor.server.brain.context.ProjectKnowledge;
 import dev.conductor.server.brain.context.ProjectKnowledgeExtractor;
 import dev.conductor.server.brain.context.ProjectKnowledgeStore;
@@ -48,6 +49,7 @@ public class BrainController {
     private final BehaviorLog behaviorLog;
     private final ContextIngestionService contextIngestionService;
     private final ProjectRegistry projectRegistry;
+    private final PersonalKnowledgeScanner personalKnowledgeScanner;
     private final ProjectKnowledgeExtractor projectKnowledgeExtractor;
     private final ProjectKnowledgeStore projectKnowledgeStore;
     private final BrainFeedbackStore brainFeedbackStore;
@@ -68,6 +70,7 @@ public class BrainController {
             CommandExecutor commandExecutor,
             TaskDecomposer taskDecomposer,
             TaskExecutor taskExecutor,
+            @Autowired(required = false) PersonalKnowledgeScanner personalKnowledgeScanner,
             @Autowired(required = false) ProjectKnowledgeExtractor projectKnowledgeExtractor,
             @Autowired(required = false) ProjectKnowledgeStore projectKnowledgeStore
     ) {
@@ -82,6 +85,7 @@ public class BrainController {
         this.commandExecutor = commandExecutor;
         this.taskDecomposer = taskDecomposer;
         this.taskExecutor = taskExecutor;
+        this.personalKnowledgeScanner = personalKnowledgeScanner;
         this.projectKnowledgeExtractor = projectKnowledgeExtractor;
         this.projectKnowledgeStore = projectKnowledgeStore;
     }
@@ -182,6 +186,19 @@ public class BrainController {
     public ResponseEntity<?> refreshContext() {
         log.info("Context refresh triggered via REST");
         return ResponseEntity.ok(contextIngestionService.buildIndex());
+    }
+
+    // ─── Personal Knowledge ──────────────────────────────────────────────
+
+    /**
+     * Returns all personal knowledge scanned from ~/.claude/.
+     */
+    @GetMapping("/personal-knowledge")
+    public ResponseEntity<?> getPersonalKnowledge() {
+        if (personalKnowledgeScanner == null) {
+            return ResponseEntity.status(503).body("Personal knowledge scanner not available");
+        }
+        return ResponseEntity.ok(personalKnowledgeScanner.scan());
     }
 
     // ─── Knowledge ─────────────────────────────────────────────────────

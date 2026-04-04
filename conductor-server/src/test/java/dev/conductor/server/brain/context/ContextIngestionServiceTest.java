@@ -28,7 +28,7 @@ class ContextIngestionServiceTest {
     void setUp() {
         projectRegistry = new ProjectRegistry();
         scanner = new ClaudeMdScanner();
-        service = new ContextIngestionService(projectRegistry, scanner);
+        service = new ContextIngestionService(projectRegistry, scanner, null);
     }
 
     // ─── Single project scan ──────────────────────────────────────────

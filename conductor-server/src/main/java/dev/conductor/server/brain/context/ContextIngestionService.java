@@ -29,10 +29,14 @@ public class ContextIngestionService {
 
     private final ProjectRegistry projectRegistry;
     private final ClaudeMdScanner claudeMdScanner;
+    private final PersonalKnowledgeScanner personalKnowledgeScanner;
 
-    public ContextIngestionService(ProjectRegistry projectRegistry, ClaudeMdScanner claudeMdScanner) {
+    public ContextIngestionService(ProjectRegistry projectRegistry, ClaudeMdScanner claudeMdScanner,
+                                   @org.springframework.beans.factory.annotation.Autowired(required = false)
+                                   PersonalKnowledgeScanner personalKnowledgeScanner) {
         this.projectRegistry = projectRegistry;
         this.claudeMdScanner = claudeMdScanner;
+        this.personalKnowledgeScanner = personalKnowledgeScanner;
     }
 
     /**
@@ -202,6 +206,41 @@ public class ContextIngestionService {
                 for (String summary : global.memoryFileSummaries()) {
                     if (sb.length() >= maxChars) break;
                     sb.append("- ").append(summary).append("\n");
+                }
+            }
+        }
+
+        // Personal knowledge (agents, memories, commands, plans)
+        if (personalKnowledgeScanner != null && sb.length() < maxChars) {
+            PersonalKnowledge pk = personalKnowledgeScanner.scan();
+
+            if (!pk.agents().isEmpty()) {
+                sb.append("\n## Available Agents\n");
+                for (AgentDefinition agent : pk.agents()) {
+                    if (sb.length() >= maxChars) break;
+                    sb.append("- **").append(agent.name()).append("**");
+                    if (!agent.description().isBlank()) sb.append(": ").append(agent.description());
+                    if (agent.model() != null) sb.append(" (model: ").append(agent.model()).append(")");
+                    sb.append("\n");
+                }
+            }
+
+            if (!pk.memories().isEmpty()) {
+                sb.append("\n## User Memories (detailed)\n");
+                for (MemoryEntry mem : pk.memories()) {
+                    if (sb.length() >= maxChars) break;
+                    sb.append("- **").append(mem.name()).append("** [").append(mem.type())
+                            .append(", ").append(mem.projectScope()).append("]: ")
+                            .append(mem.description().isBlank() ? mem.content().substring(0, Math.min(100, mem.content().length())) : mem.description())
+                            .append("\n");
+                }
+            }
+
+            if (!pk.commands().isEmpty()) {
+                sb.append("\n## Available Commands\n");
+                for (CommandDefinition cmd : pk.commands()) {
+                    if (sb.length() >= maxChars) break;
+                    sb.append("- /").append(cmd.name()).append("\n");
                 }
             }
         }

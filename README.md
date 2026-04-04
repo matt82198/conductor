@@ -30,76 +30,147 @@ You step in when it matters. Conductor handles the rest.
      └────────────────┘   └────────────────┘   └────────────────┘
 ```
 
-## What Exists Today
+## What's Built
 
-| Layer | What's Built | Status |
+~23,000 lines of code. 533+ tests. Phases 0-4 complete.
+
+| Layer | What It Does | Status |
 |-------|-------------|--------|
-| **Process management** | Spawn/kill/message Claude CLI agents as child processes | Working |
-| **Stream parsing** | Real-time JSON event parsing from agent stdout | Working |
-| **Noise reduction** | Classify, deduplicate, batch agent output by urgency | Working |
-| **Human input detection** | 4-layer detection when agents are blocked (pattern match, stall, tool use, permission) | Working |
-| **Notifications** | Route alerts by urgency, Do Not Disturb mode | Working |
-| **Multi-project** | Register projects, scan for git repos and CLAUDE.md | Working |
-| **REST + WebSocket API** | Agent CRUD, real-time event streaming | Working |
-| **Desktop dashboard** | Electron + React: spawn form, agent list, event feed, status bar | Working |
-
-124 tests. Builds in 2 seconds. Boots in 1 second.
-
-## What's Next — The Vision
-
-### Near-term: Surface what's built
-The backend has queue filtering, human input detection, and project management — but the UI only shows Phase 0 (spawn and watch). Wire up the existing backend to the dashboard: mute buttons, urgency badges, human input response panel, project selector.
-
-### Mid-term: The Conductor Brain
-Replace the human in the loop with a self-learning leader agent powered by the Claude API:
-- **Behavior learning** — Observes how you interact with agents (approvals, rejections, prompt style, intervention patterns) and builds a model of your decision-making. Over time, acts as you would.
-- **Context engine** — Reads and indexes all CLAUDE.md files, memories, skills, and agent configurations across the system. Every child agent gets the context it needs, automatically.
-- **Task decomposition** — One prompt becomes a coordinated plan: which agents, what order, what context each gets
-- **Inter-agent communication** — Agent A discovers something, Conductor shares it with Agent B immediately
-- **Autonomous decision-making** — Approves tool use, answers agent questions, handles permission requests — in your style, at machine speed
-- **Escalation only** — Surfaces to the human only what genuinely requires human judgment
-
-### Long-term: Full IDE
-- IntelliJ / VS Code plugin integration
-- Analytics and cost optimization across agent fleets
-- Team features — shared orchestration across developers
+| **Process management** | Spawn/kill/message Claude CLI agents as child processes | Done |
+| **Stream parsing** | Real-time JSON event parsing from agent stdout | Done |
+| **Noise reduction** | Classify, deduplicate, batch agent output by urgency | Done |
+| **Human input detection** | 4-layer detection when agents are blocked (pattern, stall, tool, permission) | Done |
+| **Notifications** | Route alerts by urgency, Do Not Disturb mode | Done |
+| **Multi-project** | Register projects, scan for git repos and CLAUDE.md | Done |
+| **Brain — Behavior model** | Learns from user interactions, auto-responds in your style | Done |
+| **Brain — Context engine** | Scans CLAUDE.md files, extracts project knowledge via Claude API | Done |
+| **Brain — Task decomposition** | Decomposes prompts into DAG plans, assigns to parallel agents | Done |
+| **Brain — NLP command bar** | Natural language commands interpreted and executed | Done |
+| **Brain — Knowledge store** | Persists extracted patterns, tech stacks, architecture summaries | Done |
+| **REST + WebSocket API** | Full CRUD, real-time event streaming, brain endpoints | Done |
+| **Desktop dashboard** | Electron + React: agents, events, tasks, projects, brain decisions | Done |
 
 ## Stack
 
 | Component | Tech |
 |-----------|------|
-| Server | Java 21, Spring Boot 3.4, Virtual Threads |
-| UI | Electron, React 19, TypeScript, Tailwind, Zustand |
+| Server | Java 21 (virtual threads), Spring Boot 3.4.4, Maven multi-module |
+| UI | Electron, React 19, TypeScript, Tailwind CSS, Zustand |
 | Agent Communication | Claude CLI `--output-format stream-json` via stdin/stdout |
-| Future: Conductor Brain | Claude API (`@anthropic-ai/sdk`) |
+| Brain API | Claude API via Spring RestClient (direct HTTP, no SDK) |
 | Build | Maven (server), Vite (UI) |
 
 ## Quick Start
 
 ```bash
+# Prerequisites: JDK 21+, Node.js 18+, Claude Code CLI installed
+
 # Server
 export JAVA_HOME="path/to/jdk21+"
+export ANTHROPIC_API_KEY="your-key"    # for Brain features
 ./mvnw package -DskipTests
 java -jar conductor-server/target/conductor-server-0.1.0-SNAPSHOT.jar
-# Runs on http://localhost:8090, WebSocket on ws://localhost:8090/ws/events
+# http://localhost:8090, WebSocket at ws://localhost:8090/ws/events
 
 # UI (separate terminal)
 cd conductor-ui
 npm install
 npm start
+# Opens Electron app connecting to localhost:8090
 ```
 
 ## Architecture
 
-Each server domain is isolated with its own `CLAUDE.md` defining contracts in and out. Domains communicate through Spring `ApplicationEvent` — never by reading each other's internals. See `ARCHITECTURE.md` for the full design.
+Each server domain is isolated with its own `CLAUDE.md` defining contracts in and out. Domains communicate through Spring `ApplicationEvent` — never by reading each other's internals.
 
 ```
-Electron UI  ◄─WebSocket─►  Spring Boot Server  ◄─stdin/stdout JSON─►  Claude CLI Agents
-                                    │
-                             (future: Claude API)
-                                    │
+Electron UI  <--WebSocket-->  Spring Boot Server  <--stdin/stdout JSON-->  Claude CLI Agents
+                                    |
+                              Claude API (direct HTTP)
+                                    |
                             Conductor Brain (leader agent)
 ```
+
+### Server Modules
+
+| Module | Responsibility |
+|--------|---------------|
+| `process` | Spawn/kill/communicate with Claude CLI child processes |
+| `agent` | Agent registry, templates, output storage |
+| `queue` | Noise filtering, deduplication, batching, muting |
+| `notification` | Route alerts by urgency to UI/desktop |
+| `humaninput` | Detect blocked agents, queue for user response |
+| `project` | Multi-project registration and management |
+| `brain/behavior` | User behavior logging, model building, feedback loop |
+| `brain/context` | CLAUDE.md scanning, project knowledge extraction |
+| `brain/decision` | Auto-respond or escalate based on confidence |
+| `brain/task` | Task decomposition into DAG plans, parallel execution |
+| `brain/command` | Natural language command interpretation |
+| `api` | REST + WebSocket endpoints |
+| `config` | Spring config, CORS, WebSocket registration |
+
+See `ARCHITECTURE.md` and `ARCHITECTURE-BRAIN.md` for full design docs.
+
+## API Reference
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/agents` | List all agents |
+| POST | `/api/agents` | Spawn a new agent |
+| GET | `/api/agents/{id}` | Agent details |
+| DELETE | `/api/agents/{id}` | Kill an agent |
+| GET | `/api/agents/{id}/output` | Agent execution history |
+| POST | `/api/agents/{id}/message` | Send message to agent |
+| GET | `/api/projects` | List registered projects |
+| POST | `/api/projects/register` | Register a project |
+| POST | `/api/projects/scan` | Scan directory for projects |
+| GET | `/api/brain/status` | Brain module status |
+| POST | `/api/brain/enable` | Toggle Brain on/off |
+| GET | `/api/brain/context` | Full context index |
+| POST | `/api/brain/context/refresh` | Re-scan all projects |
+| GET | `/api/brain/knowledge` | All extracted project knowledge |
+| POST | `/api/brain/analyze/{id}` | Deep-analyze a project via Claude API |
+| POST | `/api/brain/command` | Execute natural language command |
+| POST | `/api/brain/tasks` | Decompose prompt into plan and execute |
+| GET | `/api/brain/tasks` | List active plans |
+| POST | `/api/brain/feedback` | Rate a Brain decision |
+| GET | `/api/humaninput` | Pending human input requests |
+| POST | `/api/humaninput/{id}/respond` | Respond to agent question |
+
+WebSocket: `ws://localhost:8090/ws/events` — all event types on a single connection.
+
+## Roadmap
+
+| Phase | Goal | Status |
+|-------|------|--------|
+| 0 | Spawn agent, see output | **Done** |
+| 1 | Noise reduction (queue, dedup, filter) | **Done** |
+| 2 | Human input detection | **Done** |
+| 3 | Multi-project support | **Done** |
+| 4 | Brain + tasks + commands + knowledge | **Done** |
+| 5 | Personal knowledge aggregation | In Progress |
+| 6 | IntelliJ / VS Code plugin | Planned |
+| 7 | Analytics & cost tracking | Planned |
+| 8 | Team features | Planned |
+| 9 | State persistence (SQLite/Postgres) | Planned |
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, architecture overview, and coding conventions.
+
+Good first issues:
+- Wire up cost tracking per agent in the UI
+- Add rate limiting on Brain auto-responses
+- Clean up terminated agent output from `AgentOutputStore`
+- Make welcome screen stats dynamic (currently hardcoded)
+
+## Design Philosophy
+
+- **Visible orchestration** — The Brain is a first-class entity in the dashboard, not a hidden background process
+- **Learn, don't configure** — Behavior model learns from your interactions rather than requiring upfront rules
+- **Domain isolation** — Each module owns its CLAUDE.md contract; no cross-domain internal reads
+- **Parallel by default** — Identify all work, delegate all at once, integrate as results land
+- **Local only** — Everything runs on your machine, no cloud deployment
 
 ## License
 

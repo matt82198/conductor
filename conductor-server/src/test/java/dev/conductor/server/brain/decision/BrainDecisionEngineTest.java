@@ -59,7 +59,7 @@ class BrainDecisionEngineTest {
 
         ProjectRegistry projectRegistry = new ProjectRegistry();
         ClaudeMdScanner scanner = new ClaudeMdScanner();
-        ContextIngestionService contextService = new ContextIngestionService(projectRegistry, scanner);
+        ContextIngestionService contextService = new ContextIngestionService(projectRegistry, scanner, null);
 
         queue = new HumanInputQueue();
         responder = new TestHumanInputResponder(queue);
@@ -87,7 +87,7 @@ class BrainDecisionEngineTest {
                 disabledProps,
                 new BrainStateManager(disabledProps),
                 new BehaviorModelBuilder(new BehaviorLog(objectMapper, disabledProps), null),
-                new ContextIngestionService(new ProjectRegistry(), new ClaudeMdScanner()),
+                new ContextIngestionService(new ProjectRegistry(), new ClaudeMdScanner(), null),
                 responder, queue, eventPublisher, null
         );
 
